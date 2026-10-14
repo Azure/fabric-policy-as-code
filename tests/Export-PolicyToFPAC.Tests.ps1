@@ -138,8 +138,9 @@ Describe 'Invoke-FabricPolicyExport' {
         $policy = $policyJson | ConvertFrom-Json
         $policy.name | Should -Match 'allow-.*'
         @($policy.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
-        [System.IO.Path]::GetFullPath((Join-Path $policyFiles[0].DirectoryName $policy.'$schema')) |
-            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')))
+        $policy.'$schema' | Should -Be (Get-FpacSchemaReference `
+            -ArtifactDirectory $policyFiles[0].DirectoryName `
+            -SchemaPath (Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json'))
         $policy.properties.parameters.condition1Values.type | Should -Be 'Array'
         $null -eq $policy.properties.parameters.condition1Values.PSObject.Properties['defaultValue'] |
             Should -Be $true
@@ -151,8 +152,9 @@ Describe 'Invoke-FabricPolicyExport' {
         $policySet = Get-Content -LiteralPath $policySetFile.FullName -Raw | ConvertFrom-Json
         $policySet.name | Should -Match 'allow-item-creation-.*'
         @($policySet.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
-        [System.IO.Path]::GetFullPath((Join-Path $policySetFile.DirectoryName $policySet.'$schema')) |
-            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')))
+        $policySet.'$schema' | Should -Be (Get-FpacSchemaReference `
+            -ArtifactDirectory $policySetFile.DirectoryName `
+            -SchemaPath (Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json'))
         ($policySet.properties.PSObject.Properties.Name -notcontains 'scope') | Should -Be $true
         ($policySet.properties.PSObject.Properties.Name -notcontains 'metadata') | Should -Be $true
         $policySet.properties.policies.Count | Should -Be 2
@@ -166,8 +168,9 @@ Describe 'Invoke-FabricPolicyExport' {
         $assignmentJson = Get-Content -LiteralPath $assignmentFile.FullName -Raw
         $assignment = $assignmentJson | ConvertFrom-Json
         @($assignment.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
-        [System.IO.Path]::GetFullPath((Join-Path $assignmentFile.DirectoryName $assignment.'$schema')) |
-            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\assignment.schema.json')))
+        $assignment.'$schema' | Should -Be (Get-FpacSchemaReference `
+            -ArtifactDirectory $assignmentFile.DirectoryName `
+            -SchemaPath (Join-Path $PSScriptRoot '..\schemas\assignment.schema.json'))
         $assignment.properties.policySetName | Should -Be $policySet.name
         ($null -eq $assignment.properties.PSObject.Properties['children']) | Should -Be $true
         $assignment.properties.displayName | Should -Be 'Allow item creation'
@@ -579,5 +582,22 @@ Describe 'Get-FabricAuthenticationHeaders' {
             $threw = $_.Exception.Message -like '*does not match target tenant*'
         }
         $threw | Should -Be $true
+    }
+}
+
+Describe 'Get-FpacSchemaReference' {
+    It 'uses a portable relative reference when the artifact and schema share a root' {
+        $artifactDirectory = Join-Path $TestDrive 'output\policyDefinitions'
+        $schemaPath = Join-Path $TestDrive 'schemas\policy-definition.schema.json'
+
+        Get-FpacSchemaReference -ArtifactDirectory $artifactDirectory -SchemaPath $schemaPath |
+            Should -Be '../../schemas/policy-definition.schema.json'
+    }
+
+    It 'uses an absolute file URI when a Windows artifact and schema are on different drives' -Skip:(-not $IsWindows) {
+        Get-FpacSchemaReference `
+            -ArtifactDirectory 'C:\fpac-output\policyDefinitions' `
+            -SchemaPath 'D:\fpac\schemas\policy-definition.schema.json' |
+            Should -Be 'file:///D:/fpac/schemas/policy-definition.schema.json'
     }
 }

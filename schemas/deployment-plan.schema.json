@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FPAC Deployment Plan",
+  "type": "object",
+  "required": [
+    "$schema",
+    "createdOn",
+    "pacOwnerId",
+    "environment",
+    "policySets",
+    "numberOfChanges",
+    "numberUnchanged"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "createdOn": {
+      "type": "string"
+    },
+    "pacOwnerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "name",
+        "tenantId",
+        "scopes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "oneOf": [
+            {
+              "maxItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "capacityId"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "Tenant"
+                  },
+                  "capacityId": {
+                    "type": "null"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "items": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "capacityId"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "Capacity"
+                  },
+                  "capacityId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "policySets": {
+      "$ref": "#/definitions/resourcePlan"
+    },
+    "desiredStateStrategy": {
+      "enum": [
+        "OwnedOnly",
+        "Full"
+      ]
+    },
+    "activationChanges": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "numberOfChanges": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "numberUnchanged": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "definitions": {
+    "resourcePlan": {
+      "type": "object",
+      "required": [
+        "new",
+        "update",
+        "replace",
+        "adopt",
+        "delete",
+        "numberOfChanges",
+        "numberUnchanged"
+      ],
+      "properties": {
+        "new": {
+          "type": "object"
+        },
+        "update": {
+          "type": "object"
+        },
+        "replace": {
+          "type": "object"
+        },
+        "adopt": {
+          "type": "object"
+        },
+        "delete": {
+          "type": "object"
+        },
+        "numberOfChanges": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "numberUnchanged": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

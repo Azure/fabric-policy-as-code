@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FPAC Global Settings",
+  "type": "object",
+  "required": [
+    "environments"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "pacOwnerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "desiredStateStrategy": {
+      "enum": [
+        "OwnedOnly",
+        "Full"
+      ]
+    },
+    "environments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "tenantId",
+          "scope"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "array",
+            "minItems": 1,
+            "oneOf": [
+              {
+                "maxItems": 1,
+                "items": {
+                  "$ref": "#/definitions/tenantScope"
+                }
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/capacityScope"
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "definitions": {
+    "tenantScope": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "Tenant"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capacityScope": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

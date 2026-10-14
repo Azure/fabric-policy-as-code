@@ -1,5 +1,7 @@
-$scriptPath = Join-Path $PSScriptRoot '..\scripts\Deploy\Deploy-Policy.ps1'
-. $scriptPath
+BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot '..\scripts\Deploy\Deploy-Policy.ps1'
+    . $scriptPath
+}
 
 Describe 'FPAC Policy Set deployment' {
     BeforeEach {
@@ -50,14 +52,14 @@ Describe 'FPAC Policy Set deployment' {
             [Convert]::FromBase64String($definition.parts[0].payload)
         ) | ConvertFrom-Json -Depth 100
 
-        $definition.format | Should Be 'Beta'
-        $content.policyRules.Count | Should Be 1
-        $content.policyRules[0].conditions[0].predicate.values.Count | Should Be 2
-        $content.policyRules[0].conditions[0].predicate.values[0] | Should Be 'Lakehouse'
-        $content.policyRules[0].conditions[0].predicate.values[1] | Should Be 'Notebook'
-        $null -eq $content.policyRules[0].PSObject.Properties['parameters'] | Should Be $true
-        $content.properties.scope.type | Should Be 'Capacity'
-        $null -eq $content.properties.scope.PSObject.Properties['id'] | Should Be $true
+        $definition.format | Should -Be 'Beta'
+        $content.policyRules.Count | Should -Be 1
+        $content.policyRules[0].conditions[0].predicate.values.Count | Should -Be 2
+        $content.policyRules[0].conditions[0].predicate.values[0] | Should -Be 'Lakehouse'
+        $content.policyRules[0].conditions[0].predicate.values[1] | Should -Be 'Notebook'
+        $null -eq $content.policyRules[0].PSObject.Properties['parameters'] | Should -Be $true
+        $content.properties.scope.type | Should -Be 'Capacity'
+        $null -eq $content.properties.scope.PSObject.Properties['id'] | Should -Be $true
     }
 
     It 'uses the capacity activation endpoint and payload' {
@@ -97,9 +99,9 @@ Describe 'FPAC Policy Set deployment' {
             -PacOwnerId 'owner-one' -FpacId 'policy-one' -MaxLength 256
         $metadata = Get-FpacOwnershipMetadata -Description $description
 
-        $metadata.PacOwnerId | Should Be 'owner-one'
-        $metadata.FpacId | Should Be 'policy-one'
-        (Get-FpacHumanDescription -Description $description) | Should Be 'Human text'
+        $metadata.PacOwnerId | Should -Be 'owner-one'
+        $metadata.FpacId | Should -Be 'policy-one'
+        (Get-FpacHumanDescription -Description $description) | Should -Be 'Human text'
     }
 
     It 'stops when the active Policy Set changed after plan generation' {
@@ -130,7 +132,7 @@ Describe 'FPAC Policy Set deployment' {
         catch {
             $threw = $_.Exception.Message -like '*Rebuild the plan.'
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'updates owned rules individually and removes obsolete owned rules' {
@@ -312,10 +314,10 @@ Describe 'FPAC Policy Set deployment' {
             -MaxRetryAttempts 2 `
             -Confirm:$false
 
-        $result.Created | Should Be 1
-        $result.Updated | Should Be 1
-        $result.Replaced | Should Be 1
-        $result.Deleted | Should Be 1
+        $result.Created | Should -Be 1
+        $result.Updated | Should -Be 1
+        $result.Replaced | Should -Be 1
+        $result.Deleted | Should -Be 1
         Assert-MockCalled New-FabricPolicySet -Times 2
         Assert-MockCalled Update-FabricPolicySet -Times 1
         Assert-MockCalled Remove-FabricPolicySet -Times 2

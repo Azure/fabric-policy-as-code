@@ -1,5 +1,7 @@
-$scriptPath = Join-Path $PSScriptRoot '..\scripts\Deploy\Build-DeploymentPlans.ps1'
-. $scriptPath
+BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot '..\scripts\Deploy\Build-DeploymentPlans.ps1'
+    . $scriptPath
+}
 
 Describe 'FPAC deployment plans' {
     BeforeEach {
@@ -139,16 +141,16 @@ Describe 'FPAC deployment plans' {
             -DeployedRoot $script:deployedRoot -Target $script:target `
             -SchemaReference '../../schemas/deployment-plan.schema.json'
 
-        $plan.policySets.update.Count | Should Be 1
-        $plan.policySets.update.Contains('test-workspace-set') | Should Be $true
-        ($plan.policySets.update['test-workspace-set'].changes -contains 'scope') | Should Be $true
-        ($plan.policySets.update['test-workspace-set'].changes -contains 'policies') | Should Be $true
-        $plan.numberOfChanges | Should Be 1
-        $plan.numberUnchanged | Should Be 0
+        $plan.policySets.update.Count | Should -Be 1
+        $plan.policySets.update.Contains('test-workspace-set') | Should -Be $true
+        ($plan.policySets.update['test-workspace-set'].changes -contains 'scope') | Should -Be $true
+        ($plan.policySets.update['test-workspace-set'].changes -contains 'policies') | Should -Be $true
+        $plan.numberOfChanges | Should -Be 1
+        $plan.numberUnchanged | Should -Be 0
 
         $planJson = $plan | ConvertTo-Json -Depth 100
         Test-Json -Json $planJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json') |
-            Should Be $true
+            Should -Be $true
     }
 
     It 'writes changed plans and removes stale plans when no changes remain' {
@@ -157,15 +159,15 @@ Describe 'FPAC deployment plans' {
             numberOfChanges = 1
             policyDefinitions = New-FpacPlanBucket
         }
-        Write-FpacDeploymentPlan -Plan $changedPlan -Path $planPath | Should Be 'yes'
-        Test-Path -LiteralPath $planPath | Should Be $true
+        Write-FpacDeploymentPlan -Plan $changedPlan -Path $planPath | Should -Be 'yes'
+        Test-Path -LiteralPath $planPath | Should -Be $true
 
         $unchangedPlan = [ordered]@{
             numberOfChanges = 0
             policyDefinitions = New-FpacPlanBucket
         }
-        Write-FpacDeploymentPlan -Plan $unchangedPlan -Path $planPath | Should Be 'no'
-        Test-Path -LiteralPath $planPath | Should Be $false
+        Write-FpacDeploymentPlan -Plan $unchangedPlan -Path $planPath | Should -Be 'no'
+        Test-Path -LiteralPath $planPath | Should -Be $false
     }
 
     It 'selects desired resources through assignments for the target environment' {
@@ -228,10 +230,10 @@ Describe 'FPAC deployment plans' {
             -DeployedRoot $script:deployedRoot -Target $script:target `
             -SchemaReference '../../schemas/deployment-plan.schema.json'
 
-        $plan.policySets.new.Contains('test-workspace-selected-set') | Should Be $true
-        $plan.policySets.new.Count | Should Be 1
-        $plan.policySets.new['test-workspace-selected-set'].properties.policies.Count | Should Be 1
-        $plan.policySets.new['test-workspace-selected-set'].properties.policies[0].name | Should Be 'Selected'
+        $plan.policySets.new.Contains('test-workspace-selected-set') | Should -Be $true
+        $plan.policySets.new.Count | Should -Be 1
+        $plan.policySets.new['test-workspace-selected-set'].properties.policies.Count | Should -Be 1
+        $plan.policySets.new['test-workspace-selected-set'].properties.policies[0].name | Should -Be 'Selected'
     }
 
     It 'fails when a selected assignment references a missing Policy Set definition' {
@@ -254,7 +256,7 @@ Describe 'FPAC deployment plans' {
             New-FpacDeploymentPlan -DesiredRoot $script:desiredRoot `
                 -DeployedRoot $script:deployedRoot -Target $script:target `
                 -SchemaReference '../../schemas/deployment-plan.schema.json'
-        } | Should Throw "Deployment 'broken' references missing Policy Set definition 'missing'."
+        } | Should -Throw "Deployment 'broken' references missing Policy Set definition 'missing'."
     }
 
     It 'reports nested effective parameter additions and removals for Policy Sets' {
@@ -330,12 +332,12 @@ Describe 'FPAC deployment plans' {
             -DeployedRoot $script:deployedRoot -Target $script:target `
             -SchemaReference '../../schemas/deployment-plan.schema.json'
 
-        $plan.policySets.update.Count | Should Be 1
+        $plan.policySets.update.Count | Should -Be 1
         $difference = @($plan.policySets.update['test-workspace-set'].differences | Where-Object {
             $_.change -eq 'Remove' -and $_.oldValue -eq 'Reflex'
         })
-        $difference.Count | Should Be 1
-        $difference[0].path | Should Be 'properties.policies[Parameterized].definition.parameters.condition1Values.defaultValue[]'
+        $difference.Count | Should -Be 1
+        $difference[0].path | Should -Be 'properties.policies[Parameterized].definition.parameters.condition1Values.defaultValue[]'
 
         Write-FpacPlanChangeDetails -ResourceType 'Policy Sets' `
             -ResourcePlan $plan.policySets -DetailedOutput
@@ -396,16 +398,16 @@ Describe 'FPAC deployment plans' {
             -AssignmentDefinitions ([ordered]@{ 'multi-capacity' = $assignmentDefinition }) `
             -EnvironmentName 'Tenant'
 
-        $expanded.Count | Should Be 2
-        $expanded.first.properties.environment | Should Be 'Tenant'
-        $expanded.first.properties.scope.id | Should Be 'capacity-1'
-        $expanded.first.properties.workspace | Should Be 'Test Workspace'
-        $expanded.first.properties.status | Should Be 'Active'
-        $expanded.first.properties.parameters.parameterized.condition1Values.value[0] | Should Be 'A'
-        $expanded.second.properties.scope.id | Should Be 'capacity-2'
-        $expanded.second.properties.workspace | Should Be 'Other Workspace'
-        $expanded.second.properties.status | Should Be 'Inactive'
-        $expanded.second.properties.parameters.parameterized.condition1Values.value[0] | Should Be 'B'
+        $expanded.Count | Should -Be 2
+        $expanded.first.properties.environment | Should -Be 'Tenant'
+        $expanded.first.properties.scope.id | Should -Be 'capacity-1'
+        $expanded.first.properties.workspace | Should -Be 'Test Workspace'
+        $expanded.first.properties.status | Should -Be 'Active'
+        $expanded.first.properties.parameters.parameterized.condition1Values.value[0] | Should -Be 'A'
+        $expanded.second.properties.scope.id | Should -Be 'capacity-2'
+        $expanded.second.properties.workspace | Should -Be 'Other Workspace'
+        $expanded.second.properties.status | Should -Be 'Inactive'
+        $expanded.second.properties.parameters.parameterized.condition1Values.value[0] | Should -Be 'B'
 
         $definition = [pscustomobject]@{
             name = 'parameterized'
@@ -436,11 +438,11 @@ Describe 'FPAC deployment plans' {
             -PolicySetDefinitions ([ordered]@{ set = $policySet }) `
             -PolicyDefinitions ([ordered]@{ parameterized = $definition })
 
-        $materialized.Count | Should Be 2
+        $materialized.Count | Should -Be 2
         $materialized['test-workspace-first'].properties.policies[0].definition.parameters.condition1Values.defaultValue[0] |
-            Should Be 'A'
+            Should -Be 'A'
         $materialized['other-workspace-second'].properties.policies[0].definition.parameters.condition1Values.defaultValue[0] |
-            Should Be 'B'
+            Should -Be 'B'
     }
 
     It 'resolves portable workspace names to ids while materializing assignment parameters' {
@@ -495,7 +497,7 @@ Describe 'FPAC deployment plans' {
             -PolicyDefinitions $definitions -WorkspaceMap $workspaceMap
 
         $materialized['governance-set'].properties.policies[0].definition.parameters.condition1Values.defaultValue[0] |
-            Should Be 'workspace-id'
+            Should -Be 'workspace-id'
     }
 
     It 'requires every declared policy parameter in the deployment assignment' {
@@ -539,7 +541,7 @@ Describe 'FPAC deployment plans' {
         catch {
             $threw = $_.Exception.Message -like "*deployment assignment did not supply a value."
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'resolves capacity assignment scopes by name' {
@@ -566,8 +568,8 @@ Describe 'FPAC deployment plans' {
             -EnvironmentName 'Tenant' `
             -CapacityMap @{ Finance = '11111111-1111-1111-1111-111111111111' }
 
-        $expanded.named.properties.scope.id | Should Be '11111111-1111-1111-1111-111111111111'
-        @($expanded.named.properties.scope.PSObject.Properties.Name) | Should Be @('type', 'id')
+        $expanded.named.properties.scope.id | Should -Be '11111111-1111-1111-1111-111111111111'
+        @($expanded.named.properties.scope.PSObject.Properties.Name) | Should -Be @('type', 'id')
     }
 
     It 'fans one child out across workspace and scope target pairs' {
@@ -600,9 +602,9 @@ Describe 'FPAC deployment plans' {
             -EnvironmentName 'Tenant' `
             -CapacityMap @{ First = '11111111-1111-1111-1111-111111111111' }
 
-        $expanded.Count | Should Be 2
-        $expanded.Contains('shared-workspace-one-first') | Should Be $true
-        $expanded.Contains('shared-workspace-two-tenant') | Should Be $true
+        $expanded.Count | Should -Be 2
+        $expanded.Contains('shared-workspace-one-first') | Should -Be $true
+        $expanded.Contains('shared-workspace-two-tenant') | Should -Be $true
     }
 
     It 'infers a name-only assignment scope is a capacity' {
@@ -610,8 +612,8 @@ Describe 'FPAC deployment plans' {
             -Scope ([pscustomobject]@{ name = 'Finance' }) `
             -CapacityMap @{ Finance = '11111111-1111-1111-1111-111111111111' }
 
-        $resolved.type | Should Be 'Capacity'
-        $resolved.id | Should Be '11111111-1111-1111-1111-111111111111'
+        $resolved.type | Should -Be 'Capacity'
+        $resolved.id | Should -Be '11111111-1111-1111-1111-111111111111'
     }
 
     It 'fails clearly when a capacity name cannot be resolved' {
@@ -619,7 +621,7 @@ Describe 'FPAC deployment plans' {
             Resolve-FpacAssignmentScope `
                 -Scope ([pscustomobject]@{ type = 'Capacity'; name = 'Missing' }) `
                 -CapacityMap @{}
-        } | Should Throw "Capacity 'Missing' was not returned by Fabric and is not configured in global settings."
+        } | Should -Throw "Capacity 'Missing' was not returned by Fabric and is not configured in global settings."
     }
 
     It 'rejects assignments outside a capacity environment' {
@@ -642,7 +644,7 @@ Describe 'FPAC deployment plans' {
         catch {
             $threw = $_.Exception.Message -like "*outside capacity environment '$($script:target.Name)'*"
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'rejects deployment targets whose workspace is not accessible' {
@@ -659,7 +661,7 @@ Describe 'FPAC deployment plans' {
             Assert-FpacDeploymentWorkspaces `
                 -Assignments $assignments `
                 -WorkspaceMap ([System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase))
-        } | Should Throw "Workspace 'Missing Workspace' targeted by Policy Set deployment 'missing' was not returned by Fabric. Verify the workspace name and access for the planning identity."
+        } | Should -Throw "Workspace 'Missing Workspace' targeted by Policy Set deployment 'missing' was not returned by Fabric. Verify the workspace name and access for the planning identity."
     }
 
     It 'matches deployment target workspace names case-insensitively' {
@@ -692,7 +694,7 @@ Describe 'FPAC deployment plans' {
         {
             Assert-FpacDeploymentWorkspaces -Assignments $assignments `
                 -WorkspaceMap $workspaceMap -WorkspaceDetails $workspaceDetails
-        } | Should Throw "Workspace 'My workspace' targeted by Policy Set deployment 'found' is not assigned to a Fabric capacity. Policy Sets can only be stored in capacity-backed workspaces."
+        } | Should -Throw "Workspace 'My workspace' targeted by Policy Set deployment 'found' is not assigned to a Fabric capacity. Policy Sets can only be stored in capacity-backed workspaces."
     }
 
     It 'rejects more than one desired active Policy Set for the same scope' {
@@ -720,7 +722,7 @@ Describe 'FPAC deployment plans' {
         catch {
             $threw = $_.Exception.Message -like '*Only one Policy Set can be active per administrative scope.'
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'adopts matching unowned resources and preserves unrelated unowned resources by default' {
@@ -747,8 +749,8 @@ Describe 'FPAC deployment plans' {
         $plan = Build-FpacResourcePlan -ResourceType 'Policy Sets' -Desired $desired `
             -Deployed $deployed -PacOwnerId 'owner-one' -DesiredStateStrategy OwnedOnly
 
-        $plan.adopt.Count | Should Be 1
-        $plan.delete.Count | Should Be 0
+        $plan.adopt.Count | Should -Be 1
+        $plan.delete.Count | Should -Be 0
     }
 
     It 'detects active scope conflicts across FPAC environments' {
@@ -795,7 +797,7 @@ Describe 'FPAC deployment plans' {
         catch {
             $threw = $_.Exception.Message -like '*both target*'
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'resolves environment capacity names from live Fabric capacities' {
@@ -816,9 +818,9 @@ Describe 'FPAC deployment plans' {
         }
         $resolved = Resolve-FpacEnvironmentCapacityScopes -Target $target -CapacityMap $map
 
-        $map.Live | Should Be '11111111-1111-1111-1111-111111111111'
-        $resolved.CapacityIds[0] | Should Be '11111111-1111-1111-1111-111111111111'
-        $resolved.Scopes[0].Name | Should Be 'Live'
+        $map.Live | Should -Be '11111111-1111-1111-1111-111111111111'
+        $resolved.CapacityIds[0] | Should -Be '11111111-1111-1111-1111-111111111111'
+        $resolved.Scopes[0].Name | Should -Be 'Live'
     }
 
     It 'excludes fake assignment samples from artifact discovery' {
@@ -827,7 +829,7 @@ Describe 'FPAC deployment plans' {
 
         $assignments = Get-FpacArtifactCollection -Path (Join-Path $script:desiredRoot 'policyAssignments')
 
-        $assignments.Count | Should Be 0
+        $assignments.Count | Should -Be 0
     }
 
     It 'builds the plan file through the operation workflow' {
@@ -905,7 +907,7 @@ Describe 'FPAC deployment plans' {
             -DevOpsType none `
             -MaxRetryAttempts 5
 
-        $result.PolicyStage | Should Be 'yes'
+        $result.PolicyStage | Should -Be 'yes'
         Assert-MockCalled Invoke-FabricPolicyExport -Times 1 -Exactly -ParameterFilter {
             $ActivityVerb -eq 'Retrieving'
         }
@@ -913,14 +915,14 @@ Describe 'FPAC deployment plans' {
         Assert-MockCalled Write-FpacModernSection -Times 1 -ParameterFilter {
             $Title -eq 'Policy Sets Change Details'
         }
-        Test-Path -LiteralPath $result.PlanFile | Should Be $true
+        Test-Path -LiteralPath $result.PlanFile | Should -Be $true
         $planJson = Get-Content -LiteralPath $result.PlanFile -Raw
         $plan = $planJson | ConvertFrom-Json
         $newPolicySet = $plan.policySets.new.PSObject.Properties['test-workspace-set'].Value
-        $newPolicySet.properties.policies[0].name | Should Be 'New'
+        $newPolicySet.properties.policies[0].name | Should -Be 'New'
         [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $result.PlanFile) $plan.'$schema')) |
-            Should Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json')))
+            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json')))
         Test-Json -Json $planJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json') |
-            Should Be $true
+            Should -Be $true
     }
 }

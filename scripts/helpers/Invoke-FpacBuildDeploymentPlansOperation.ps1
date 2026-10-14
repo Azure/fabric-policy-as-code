@@ -41,7 +41,7 @@ function Invoke-FpacBuildDeploymentPlansOperation {
     if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
         throw "FPAC deployment plan schema was not found: $schemaPath"
     }
-    $schemaReference = [System.IO.Path]::GetRelativePath($planFolder, $schemaPath).Replace('\', '/')
+    $schemaReference = Get-FpacSchemaReference -ArtifactDirectory $planFolder -SchemaPath $schemaPath
     if (Test-Path -LiteralPath $planFile -PathType Leaf) {
         Remove-Item -LiteralPath $planFile -Force
     }

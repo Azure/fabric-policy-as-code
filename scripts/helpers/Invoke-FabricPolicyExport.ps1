@@ -44,18 +44,15 @@ function Invoke-FabricPolicyExport {
             throw "FPAC schema file was not found: $schemaPath"
         }
     }
-    $policyDefinitionSchemaReference = [System.IO.Path]::GetRelativePath(
-        $definitionRoot,
-        (Join-Path $schemaRoot 'policy-definition.schema.json')
-    ).Replace('\', '/')
-    $policySetSchemaReference = [System.IO.Path]::GetRelativePath(
-        $policySetRoot,
-        (Join-Path $schemaRoot 'policy-set.schema.json')
-    ).Replace('\', '/')
-    $assignmentSchemaReference = [System.IO.Path]::GetRelativePath(
-        $assignmentRoot,
-        (Join-Path $schemaRoot 'assignment.schema.json')
-    ).Replace('\', '/')
+    $policyDefinitionSchemaReference = Get-FpacSchemaReference `
+        -ArtifactDirectory $definitionRoot `
+        -SchemaPath (Join-Path $schemaRoot 'policy-definition.schema.json')
+    $policySetSchemaReference = Get-FpacSchemaReference `
+        -ArtifactDirectory $policySetRoot `
+        -SchemaPath (Join-Path $schemaRoot 'policy-set.schema.json')
+    $assignmentSchemaReference = Get-FpacSchemaReference `
+        -ArtifactDirectory $assignmentRoot `
+        -SchemaPath (Join-Path $schemaRoot 'assignment.schema.json')
 
     $exported = [System.Collections.Generic.List[object]]::new()
     $failures = [System.Collections.Generic.List[object]]::new()

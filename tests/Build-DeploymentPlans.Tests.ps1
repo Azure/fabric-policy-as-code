@@ -920,8 +920,9 @@ Describe 'FPAC deployment plans' {
         $plan = $planJson | ConvertFrom-Json
         $newPolicySet = $plan.policySets.new.PSObject.Properties['test-workspace-set'].Value
         $newPolicySet.properties.policies[0].name | Should -Be 'New'
-        [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $result.PlanFile) $plan.'$schema')) |
-            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json')))
+        $plan.'$schema' | Should -Be (Get-FpacSchemaReference `
+            -ArtifactDirectory (Split-Path -Parent $result.PlanFile) `
+            -SchemaPath (Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json'))
         Test-Json -Json $planJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json') |
             Should -Be $true
     }

@@ -160,7 +160,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Pester
         shell: pwsh
@@ -192,7 +192,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pester-results
           path: TestResults.xml
@@ -1048,7 +1048,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -1140,7 +1140,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build module
         shell: pwsh
@@ -1154,7 +1154,7 @@ jobs:
             .\artifacts\FabricPolicyAsCode\FabricPolicyAsCode.psd1
 
       - name: Upload module
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: FabricPolicyAsCode
           path: artifacts/FabricPolicyAsCode
@@ -1168,7 +1168,7 @@ jobs:
 
     steps:
       - name: Download module
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: FabricPolicyAsCode
           path: artifacts/FabricPolicyAsCode
@@ -1324,7 +1324,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Azure login
         uses: azure/login@v2
@@ -1383,7 +1383,7 @@ jobs:
 
       - name: Upload immutable plan
         if: steps.detect.outputs.hasChanges == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plans-${{ inputs.environmentName }}
           path: Output/plans-${{ inputs.environmentName }}
@@ -1399,10 +1399,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download reviewed plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: plans-${{ inputs.environmentName }}
           path: Output/plans-${{ inputs.environmentName }}

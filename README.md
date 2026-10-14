@@ -4,6 +4,8 @@ FPAC is an early-stage PowerShell project for managing Microsoft Fabric policies
 
 Fabric policies and their REST APIs are preview features. Export and deployment only cover workspaces, Policy Sets, and rules visible to the signed-in identity.
 
+For the staged repository setup, live validation plan, module packaging, documentation site, and CI/CD workflows, see the [FPAC implementation and validation roadmap](docs/implementation-and-validation-roadmap.md).
+
 ## Requirements
 
 - PowerShell 7.4 or newer.

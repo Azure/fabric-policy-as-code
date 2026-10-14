@@ -1,0 +1,13 @@
+# Replace or extend these entries when additional maintainers join.
+* @gregslack78
+
+/.github/ @gregslack78
+/docs/ @gregslack78
+/schemas/ @gregslack78
+/scripts/ @gregslack78
+/tests/ @gregslack78
+
+/CODE_OF_CONDUCT.md @gregslack78
+/CONTRIBUTING.md @gregslack78
+/README.md @gregslack78
+/SECURITY.md @gregslack78

@@ -1,5 +1,7 @@
-$scriptPath = Join-Path $PSScriptRoot '..\scripts\operations\Export-PolicyToFPAC.ps1'
-. $scriptPath
+BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot '..\scripts\operations\Export-PolicyToFPAC.ps1'
+    . $scriptPath
+}
 
 Describe 'Invoke-FabricPolicyExport' {
     BeforeEach {
@@ -125,76 +127,76 @@ Describe 'Invoke-FabricPolicyExport' {
         $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
             -Target $script:target -CapacityMap $script:capacityMap
 
-        $result.IsComplete | Should Be $true
-        $result.ExportedCount | Should Be 1
-        $result.PolicyCount | Should Be 2
-        $result.FailureCount | Should Be 0
+        $result.IsComplete | Should -Be $true
+        $result.ExportedCount | Should -Be 1
+        $result.PolicyCount | Should -Be 2
+        $result.FailureCount | Should -Be 0
 
         $policyFiles = @(Get-ChildItem -LiteralPath (Join-Path $output 'policyDefinitions') -Filter '*.json')
-        $policyFiles.Count | Should Be 2
+        $policyFiles.Count | Should -Be 2
         $policyJson = Get-Content -LiteralPath $policyFiles[0].FullName -Raw
         $policy = $policyJson | ConvertFrom-Json
-        $policy.name | Should Match 'allow-.*'
-        @($policy.PSObject.Properties.Name) | Should Be @('$schema', 'name', 'properties')
+        $policy.name | Should -Match 'allow-.*'
+        @($policy.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
         [System.IO.Path]::GetFullPath((Join-Path $policyFiles[0].DirectoryName $policy.'$schema')) |
-            Should Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')))
-        $policy.properties.parameters.condition1Values.type | Should Be 'Array'
+            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')))
+        $policy.properties.parameters.condition1Values.type | Should -Be 'Array'
         $null -eq $policy.properties.parameters.condition1Values.PSObject.Properties['defaultValue'] |
-            Should Be $true
-        $policy.properties.conditions[0].predicate.values[0] | Should Match '^\[parameters\('
-        $policyJson | Should Not Match '"fabricRuleId"|"createdDateTime"|"lastModifiedDateTime"'
-        (Test-Json -Json $policyJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')) | Should Be $true
+            Should -Be $true
+        $policy.properties.conditions[0].predicate.values[0] | Should -Match '^\[parameters\('
+        $policyJson | Should -Not -Match '"fabricRuleId"|"createdDateTime"|"lastModifiedDateTime"'
+        (Test-Json -Json $policyJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')) | Should -Be $true
 
         $policySetFile = Get-ChildItem -LiteralPath (Join-Path $output 'policySets') -Filter '*.json'
         $policySet = Get-Content -LiteralPath $policySetFile.FullName -Raw | ConvertFrom-Json
-        $policySet.name | Should Match 'allow-item-creation-.*'
-        @($policySet.PSObject.Properties.Name) | Should Be @('$schema', 'name', 'properties')
+        $policySet.name | Should -Match 'allow-item-creation-.*'
+        @($policySet.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
         [System.IO.Path]::GetFullPath((Join-Path $policySetFile.DirectoryName $policySet.'$schema')) |
-            Should Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')))
-        ($policySet.properties.PSObject.Properties.Name -notcontains 'scope') | Should Be $true
-        ($policySet.properties.PSObject.Properties.Name -notcontains 'metadata') | Should Be $true
-        $policySet.properties.policies.Count | Should Be 2
-        $policySet.properties.policies[0].parameters | Should BeOfType System.Management.Automation.PSCustomObject
+            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')))
+        ($policySet.properties.PSObject.Properties.Name -notcontains 'scope') | Should -Be $true
+        ($policySet.properties.PSObject.Properties.Name -notcontains 'metadata') | Should -Be $true
+        $policySet.properties.policies.Count | Should -Be 2
+        $policySet.properties.policies[0].parameters | Should -BeOfType System.Management.Automation.PSCustomObject
         @($policySet.properties.policies | Where-Object {
             @($_.parameters.PSObject.Properties).Count -gt 0
-        }).Count | Should Be 0
-        (Test-Json -Json (Get-Content -LiteralPath $policySetFile.FullName -Raw) -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')) | Should Be $true
+        }).Count | Should -Be 0
+        (Test-Json -Json (Get-Content -LiteralPath $policySetFile.FullName -Raw) -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')) | Should -Be $true
 
         $assignmentFile = Get-ChildItem -LiteralPath (Join-Path $output 'assignments') -Filter '*.json'
         $assignmentJson = Get-Content -LiteralPath $assignmentFile.FullName -Raw
         $assignment = $assignmentJson | ConvertFrom-Json
-        @($assignment.PSObject.Properties.Name) | Should Be @('$schema', 'name', 'properties')
+        @($assignment.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
         [System.IO.Path]::GetFullPath((Join-Path $assignmentFile.DirectoryName $assignment.'$schema')) |
-            Should Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\assignment.schema.json')))
-        $assignment.properties.policySetName | Should Be $policySet.name
-        ($null -eq $assignment.properties.PSObject.Properties['children']) | Should Be $true
-        $assignment.properties.displayName | Should Be 'Allow item creation'
+            Should -Be ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\schemas\assignment.schema.json')))
+        $assignment.properties.policySetName | Should -Be $policySet.name
+        ($null -eq $assignment.properties.PSObject.Properties['children']) | Should -Be $true
+        $assignment.properties.displayName | Should -Be 'Allow item creation'
         $exportedTarget = $assignment.properties.targets.CapacityTest[0]
-        $exportedTarget.workspace | Should Be 'Finance'
-        $exportedTarget.scope.name | Should Be 'CapacityTest'
-        $assignment.properties.status | Should Be 'Active'
-        $assignment.properties.parameters | Should BeOfType System.Management.Automation.PSCustomObject
+        $exportedTarget.workspace | Should -Be 'Finance'
+        $exportedTarget.scope.name | Should -Be 'CapacityTest'
+        $assignment.properties.status | Should -Be 'Active'
+        $assignment.properties.parameters | Should -BeOfType System.Management.Automation.PSCustomObject
         foreach ($exportedPolicy in @($policySet.properties.policies)) {
             $parameterValues = $assignment.properties.parameters.PSObject.Properties[$exportedPolicy.name].Value
-            @($parameterValues.condition1Values.value).Count | Should BeGreaterThan 0
+            @($parameterValues.condition1Values.value).Count | Should -BeGreaterThan 0
         }
         @($assignment.properties.parameters.PSObject.Properties | Where-Object {
             @($_.Value.condition1Values.value) -contains 'Finance'
-        }).Count | Should Be 1
-        $assignmentJson | Should Not Match '"workspace-1"'
-        $assignmentJson | Should Not Match '"metadata"|"fabricPolicySetId"|"exportedAtUtc"'
-        (Test-Json -Json $assignmentJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\assignment.schema.json')) | Should Be $true
+        }).Count | Should -Be 1
+        $assignmentJson | Should -Not -Match '"workspace-1"'
+        $assignmentJson | Should -Not -Match '"metadata"|"fabricPolicySetId"|"exportedAtUtc"'
+        (Test-Json -Json $assignmentJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\assignment.schema.json')) | Should -Be $true
         $expandedAssignment = Expand-FpacAssignmentDefinitions `
             -AssignmentDefinitions ([ordered]@{ $assignment.name = $assignment }) `
             -EnvironmentName $script:target.Name `
             -CapacityMap $script:capacityMap
-        $expandedAssignment[$assignment.name].properties.scope.id | Should Be $script:target.CapacityId
+        $expandedAssignment[$assignment.name].properties.scope.id | Should -Be $script:target.CapacityId
 
         $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
-        $manifest.environment.name | Should Be $script:target.Name
-        $manifest.policyCount | Should Be 2
-        $manifest.policySets[0].policyCount | Should Be 2
-        Test-Path -LiteralPath (Join-Path $output 'schemas') | Should Be $false
+        $manifest.environment.name | Should -Be $script:target.Name
+        $manifest.policyCount | Should -Be 2
+        $manifest.policySets[0].policyCount | Should -Be 2
+        Test-Path -LiteralPath (Join-Path $output 'schemas') | Should -Be $false
     }
 
     It 'exports all policy scopes when the selected environment is tenant-wide' {
@@ -210,9 +212,9 @@ Describe 'Invoke-FabricPolicyExport' {
         $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
             -Target $script:target -CapacityMap $script:capacityMap
 
-        $result.ExportedCount | Should Be 1
+        $result.ExportedCount | Should -Be 1
         $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
-        $manifest.policySets[0].scopeType | Should Be 'Capacity'
+        $manifest.policySets[0].scopeType | Should -Be 'Capacity'
     }
 
     It 'skips capacity policy sets assigned to another capacity' {
@@ -222,10 +224,10 @@ Describe 'Invoke-FabricPolicyExport' {
         $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
             -Target $script:target -CapacityMap $script:capacityMap
 
-        $result.ExportedCount | Should Be 0
+        $result.ExportedCount | Should -Be 0
         $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
-        $manifest.skippedScopeCount | Should Be 1
-        $manifest.failureCount | Should Be 0
+        $manifest.skippedScopeCount | Should -Be 1
+        $manifest.failureCount | Should -Be 0
     }
 
     It 'rejects duplicate accessible workspace names' {
@@ -238,7 +240,7 @@ Describe 'Invoke-FabricPolicyExport' {
         {
             Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
                 -Target $script:target -CapacityMap $script:capacityMap
-        } | Should Throw "Fabric returned more than one accessible workspace named 'policytest'. FPAC deployment target workspace names must be unique."
+        } | Should -Throw "Fabric returned more than one accessible workspace named 'policytest'. FPAC deployment target workspace names must be unique."
     }
 
     It 'exports policy sets assigned to any capacity in the selected environment' {
@@ -255,9 +257,9 @@ Describe 'Invoke-FabricPolicyExport' {
         $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
             -Target $script:target -CapacityMap $script:capacityMap
 
-        $result.ExportedCount | Should Be 1
+        $result.ExportedCount | Should -Be 1
         $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
-        $manifest.environment.scopes.Count | Should Be 2
+        $manifest.environment.scopes.Count | Should -Be 2
     }
 
     It 'reports policy set and policy rule API failures in the manifest' {
@@ -278,11 +280,11 @@ Describe 'Invoke-FabricPolicyExport' {
         $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
             -Target $script:target -CapacityMap $script:capacityMap
 
-        $result.IsComplete | Should Be $false
-        $result.FailureCount | Should Be 1
+        $result.IsComplete | Should -Be $false
+        $result.FailureCount | Should -Be 1
         $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
-        $manifest.failures[0].itemId | Should Be 'policy-1'
-        $manifest.isComplete | Should Be $false
+        $manifest.failures[0].itemId | Should -Be 'policy-1'
+        $manifest.isComplete | Should -Be $false
     }
 
     It 'refuses to write into a non-empty output directory' {
@@ -298,8 +300,8 @@ Describe 'Invoke-FabricPolicyExport' {
         catch {
             $threw = $_.Exception.Message -like '*not empty*'
         }
-        $threw | Should Be $true
-        Test-Path -LiteralPath (Join-Path $output 'keep.txt') | Should Be $true
+        $threw | Should -Be $true
+        Test-Path -LiteralPath (Join-Path $output 'keep.txt') | Should -Be $true
     }
 }
 
@@ -309,7 +311,7 @@ Describe 'FPAC output replacement' {
 
         $destination = Resolve-FpacScopeOutputPath -OutputRoot $root -ScopeName 'CapacityTest'
 
-        $destination | Should Be ([System.IO.Path]::GetFullPath((Join-Path $root 'CapacityTest')))
+        $destination | Should -Be ([System.IO.Path]::GetFullPath((Join-Path $root 'CapacityTest')))
     }
 
     It 'uses the environment folder directly when OutputPath already ends with its name' {
@@ -317,7 +319,7 @@ Describe 'FPAC output replacement' {
 
         $destination = Resolve-FpacScopeOutputPath -OutputRoot $environmentFolder -ScopeName 'CapacityTest'
 
-        $destination | Should Be ([System.IO.Path]::GetFullPath($environmentFolder))
+        $destination | Should -Be ([System.IO.Path]::GetFullPath($environmentFolder))
     }
 
     It 'does not prompt when the selected scope output folder does not exist' {
@@ -326,8 +328,8 @@ Describe 'FPAC output replacement' {
 
         $result = Confirm-FpacOutputReplacement -DestinationPath $destination -DisplayPath 'Output\CapacityTest'
 
-        $result | Should Be $true
-        Test-Path -LiteralPath $destination | Should Be $false
+        $result | Should -Be $true
+        Test-Path -LiteralPath $destination | Should -Be $false
     }
 
     It 'deletes only the selected scope folder after Y confirmation' {
@@ -339,8 +341,8 @@ Describe 'FPAC output replacement' {
 
         $result = Confirm-FpacOutputReplacement -DestinationPath $scopeFolder -DisplayPath 'Output\CapacityTest'
 
-        $result | Should Be $true
-        Test-Path -LiteralPath $scopeFolder | Should Be $false
+        $result | Should -Be $true
+        Test-Path -LiteralPath $scopeFolder | Should -Be $false
     }
 
     It 'preserves the existing scope folder after N confirmation' {
@@ -353,8 +355,8 @@ Describe 'FPAC output replacement' {
 
         $result = Confirm-FpacOutputReplacement -DestinationPath $scopeFolder -DisplayPath 'Output\CapacityTest'
 
-        $result | Should Be $false
-        (Get-Content -LiteralPath $marker -Raw).Trim() | Should Be 'preserve'
+        $result | Should -Be $false
+        (Get-Content -LiteralPath $marker -Raw).Trim() | Should -Be 'preserve'
     }
 }
 
@@ -384,10 +386,10 @@ Describe 'Get-FabricPagedCollection' {
 
         $results = @(Get-FabricPagedCollection -Uri 'https://api.fabric.microsoft.com/v1/workspaces' -Headers @{})
 
-        $results.Count | Should Be 2
-        $results[0].id | Should Be 'w1'
-        $results[1].id | Should Be 'w2'
-        $script:pageCalls[1] | Should Be 'https://api.fabric.microsoft.com/v1/workspaces?continuationToken=token%2F2'
+        $results.Count | Should -Be 2
+        $results[0].id | Should -Be 'w1'
+        $results[1].id | Should -Be 'w2'
+        $script:pageCalls[1] | Should -Be 'https://api.fabric.microsoft.com/v1/workspaces?continuationToken=token%2F2'
     }
 }
 
@@ -402,7 +404,7 @@ Describe 'Get-FabricCapacityName' {
 
         $name = Get-FabricCapacityName -CapacityId '33333333-3333-3333-3333-333333333333' -Headers @{}
 
-        $name | Should Be 'Finance Capacity'
+        $name | Should -Be 'Finance Capacity'
         Assert-MockCalled Get-FabricPagedCollection -ParameterFilter {
             $Uri -eq 'https://api.fabric.microsoft.com/v1/capacities'
         } -Times 1
@@ -419,7 +421,7 @@ Describe 'Get-FabricCapacityName' {
             $threw = $_.Exception.Message -like '*did not return a display name*'
         }
 
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 }
 
@@ -437,8 +439,8 @@ Describe 'Invoke-FabricApiRequest' {
 
         $response = Invoke-FabricApiRequest -Method GET -Uri 'https://api.fabric.microsoft.com/v1/test' -Headers @{}
 
-        $script:requestAttempts | Should Be 2
-        $response.Body.value[0].id | Should Be 'policy-rule-1'
+        $script:requestAttempts | Should -Be 2
+        $response.Body.value[0].id | Should -Be 'policy-rule-1'
         Assert-MockCalled Start-Sleep -Times 1
     }
 }
@@ -447,8 +449,8 @@ Describe 'FPAC environments' {
     It 'limits generated identifiers to safe file-name lengths while retaining their unique suffix' {
         $identifier = ConvertTo-FpacIdentifier -DisplayName ('Policy ' + ('A' * 100)) -Id '12345678-1234-1234-1234-123456789012'
 
-        $identifier.Length | Should Be 80
-        $identifier | Should Match '-12345678$'
+        $identifier.Length | Should -Be 80
+        $identifier | Should -Match '-12345678$'
     }
 
     It 'loads and normalizes tenant and capacity environments' {
@@ -476,12 +478,12 @@ Describe 'FPAC environments' {
 
         $settings = Get-FpacGlobalSettings -Path $path
 
-        $settings.Environments.Count | Should Be 2
-        $settings.Environments[0].ScopeType | Should Be 'Tenant'
-        $settings.Environments[0].Scopes.Count | Should Be 1
-        $settings.Environments[1].Name | Should Be 'DevCapacity'
-        $settings.Environments[1].CapacityIds.Count | Should Be 0
-        $settings.Environments[1].Scopes[1].Name | Should Be 'Development Two'
+        $settings.Environments.Count | Should -Be 2
+        $settings.Environments[0].ScopeType | Should -Be 'Tenant'
+        $settings.Environments[0].Scopes.Count | Should -Be 1
+        $settings.Environments[1].Name | Should -Be 'DevCapacity'
+        $settings.Environments[1].CapacityIds.Count | Should -Be 0
+        $settings.Environments[1].Scopes[1].Name | Should -Be 'Development Two'
     }
 
     It 'selects a configured environment case-insensitively' {
@@ -492,7 +494,7 @@ Describe 'FPAC environments' {
 
         $selected = Select-FpacEnvironment -Environments $environments -EnvironmentName 'devcapacity'
 
-        $selected.Name | Should Be 'DevCapacity'
+        $selected.Name | Should -Be 'DevCapacity'
     }
 
     It 'prompts for a numeric environment selection when no name is supplied' {
@@ -504,7 +506,7 @@ Describe 'FPAC environments' {
 
         $selected = Select-FpacEnvironment -Environments $environments
 
-        $selected.Name | Should Be 'DevCapacity'
+        $selected.Name | Should -Be 'DevCapacity'
     }
 
     It 'requires a capacity name for capacity environments' {
@@ -518,7 +520,7 @@ Describe 'FPAC environments' {
         catch {
             $threw = $_.Exception.Message.Contains('scope[].name is required')
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'rejects mixed tenant and capacity scopes in one environment' {
@@ -532,7 +534,7 @@ Describe 'FPAC environments' {
         catch {
             $threw = $_.Exception.Message -like '*cannot mix tenant and capacity*'
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 
     It 'rejects an environment name that is not configured' {
@@ -545,7 +547,7 @@ Describe 'FPAC environments' {
         catch {
             $threw = $_.Exception.Message -like '*not configured*'
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 }
 
@@ -561,7 +563,7 @@ Describe 'Get-FabricAuthenticationHeaders' {
 
         $headers = Get-FabricAuthenticationHeaders -TenantId '11111111-1111-1111-1111-111111111111'
 
-        $headers.Authorization | Should Be 'Bearer local-test-token'
+        $headers.Authorization | Should -Be 'Bearer local-test-token'
         Assert-MockCalled Get-AzAccessToken -Times 1
     }
 
@@ -576,6 +578,6 @@ Describe 'Get-FabricAuthenticationHeaders' {
         catch {
             $threw = $_.Exception.Message -like '*does not match target tenant*'
         }
-        $threw | Should Be $true
+        $threw | Should -Be $true
     }
 }

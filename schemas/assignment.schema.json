@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FPAC Policy Set Deployment",
+  "type": "object",
+  "required": [
+    "$schema",
+    "name",
+    "properties"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "properties": {
+      "type": "object",
+      "properties": {
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policySetName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/definitions/scope"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Active",
+            "Inactive"
+          ]
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/legacyParameters"
+            },
+            {
+              "$ref": "#/definitions/deploymentParameters"
+            }
+          ]
+        },
+        "targets": {
+          "$ref": "#/definitions/targets"
+        },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "displayName",
+              "targets"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Active",
+                  "Inactive"
+                ]
+              },
+              "parameters": {
+                "$ref": "#/definitions/deploymentParameters"
+              },
+              "targets": {
+                "$ref": "#/definitions/targets"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "environment",
+            "policySetName",
+            "scope",
+            "status",
+            "parameters"
+          ]
+        },
+        {
+          "required": [
+            "policySetName",
+            "displayName",
+            "status",
+            "parameters",
+            "targets"
+          ]
+        },
+        {
+          "required": [
+            "policySetName",
+            "children"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "legacyParameters": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/parameterValue"
+      }
+    },
+    "deploymentParameters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/definitions/parameterValue"
+        }
+      }
+    },
+    "parameterValue": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {}
+      },
+      "additionalProperties": false
+    },
+    "targets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/definitions/target"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "workspace",
+        "scope"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/definitions/scope"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "Tenant",
+            "Capacity"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "Tenant"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "Tenant"
+              },
+              "id": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "anyOf": [
+              {
+                "required": [
+                  "name"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              },
+              {
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "Capacity"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

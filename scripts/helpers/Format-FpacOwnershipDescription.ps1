@@ -4,8 +4,11 @@ function Format-FpacOwnershipDescription {
         [AllowNull()]
         [string] $Description,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ParameterSetName = 'Ownership')]
         [string] $PacOwnerId,
+
+        [Parameter(Mandatory, ParameterSetName = 'Identity')]
+        [switch] $IdentityOnly,
 
         [Parameter(Mandatory)]
         [string] $FpacId,
@@ -15,7 +18,7 @@ function Format-FpacOwnershipDescription {
         [int] $MaxLength = 10000
     )
 
-    if ($PacOwnerId -notmatch '^[A-Za-z0-9._:-]+$') {
+    if (-not $IdentityOnly -and $PacOwnerId -notmatch '^[A-Za-z0-9._:-]+$') {
         throw "PAC owner id '$PacOwnerId' contains unsupported marker characters."
     }
     if ($FpacId -notmatch '^[A-Za-z0-9._:-]+$') {
@@ -23,7 +26,8 @@ function Format-FpacOwnershipDescription {
     }
 
     $humanDescription = Get-FpacHumanDescription -Description $Description
-    $marker = "[[FPAC:v1;owner=$PacOwnerId;id=$FpacId]]"
+    $marker = if ($IdentityOnly) { "[[FPAC:v1;id=$FpacId]]" }
+    else { "[[FPAC:v1;owner=$PacOwnerId;id=$FpacId]]" }
     $value = if ([string]::IsNullOrWhiteSpace($humanDescription)) {
         $marker
     }
@@ -31,7 +35,7 @@ function Format-FpacOwnershipDescription {
         "$humanDescription`n`n$marker"
     }
     if ($value.Length -gt $MaxLength) {
-        throw "Description plus FPAC ownership marker exceeds the $MaxLength character limit."
+        throw "Description plus FPAC marker exceeds the $MaxLength character limit."
     }
     return $value
 }

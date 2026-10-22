@@ -13,16 +13,6 @@ function Set-FabricPolicySetRules {
         [hashtable] $Headers,
 
         [Parameter()]
-        [string] $PacOwnerId,
-
-        [Parameter()]
-        [ValidateSet('OwnedOnly', 'Full')]
-        [string] $DesiredStateStrategy = 'OwnedOnly',
-
-        [Parameter()]
-        [switch] $AdoptUnowned,
-
-        [Parameter()]
         [ValidateRange(1, 7200)]
         [int] $OperationTimeoutSeconds = 1800
     )
@@ -34,21 +24,22 @@ function Set-FabricPolicySetRules {
     $desiredRules = @($content.policyRules)
     $deployedRules = @(Get-FabricPolicyRules -WorkspaceId $WorkspaceId -PolicySetId $PolicySetId -Headers $Headers)
     $matchedRuleIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $workspaceName = [string] (Get-FabricPropertyValue -InputObject $PolicySet.properties -Name 'workspace')
+    if ([string]::IsNullOrWhiteSpace($workspaceName)) { $workspaceName = $WorkspaceId }
+    $resourceLabel = "$workspaceName/$([string] (Get-FabricPropertyValue -InputObject $PolicySet.properties -Name 'displayName'))"
 
     foreach ($desiredRule in $desiredRules) {
         $desiredRuleDescription = [string] (Get-FabricPropertyValue -InputObject $desiredRule -Name 'description')
-        $desiredOwnership = Get-FpacOwnershipMetadata -Description $desiredRuleDescription
-        if ($null -eq $desiredOwnership) {
-            throw "Desired policy rule '$($desiredRule.displayName)' does not contain FPAC ownership metadata."
+        $desiredId = Get-FpacIdentityFromDescription -Description $desiredRuleDescription
+        if ([string]::IsNullOrWhiteSpace($desiredId)) {
+            throw "Desired policy rule '$($desiredRule.displayName)' does not contain an FPAC identity."
         }
         $matchingRules = @($deployedRules | Where-Object {
-            $ownership = Get-FpacOwnershipMetadata -Description ([string] $_.description)
-            $null -ne $ownership -and
-            [string]::Equals($ownership.PacOwnerId, $desiredOwnership.PacOwnerId, [System.StringComparison]::OrdinalIgnoreCase) -and
-            [string]::Equals($ownership.FpacId, $desiredOwnership.FpacId, [System.StringComparison]::OrdinalIgnoreCase)
+            $identity = Get-FpacIdentityFromDescription -Description ([string] $_.description)
+            [string]::Equals($identity, $desiredId, [System.StringComparison]::OrdinalIgnoreCase)
         })
         if ($matchingRules.Count -gt 1) {
-            throw "More than one live policy rule has FPAC id '$($desiredOwnership.FpacId)'."
+            throw "More than one live policy rule has FPAC id '$desiredId'."
         }
 
         $matchingRule = if ($matchingRules.Count -eq 1) {
@@ -62,15 +53,7 @@ function Set-FabricPolicySetRules {
                 throw "More than one live policy rule is named '$($desiredRule.displayName)'."
             }
             if ($displayMatches.Count -eq 1) {
-                $existingOwnership = Get-FpacOwnershipMetadata -Description ([string] $displayMatches[0].description)
-                if ($null -ne $existingOwnership -and
-                    -not [string]::Equals($existingOwnership.PacOwnerId, $PacOwnerId, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    throw "Policy rule '$($desiredRule.displayName)' is owned by '$($existingOwnership.PacOwnerId)' and cannot be adopted by '$PacOwnerId'."
-                }
-                if ($null -eq $existingOwnership -and -not $AdoptUnowned) {
-                    throw "Policy rule '$($desiredRule.displayName)' is unowned. Rerun an adoption plan with -AdoptUnowned."
-                }
-                $matchingRule = $displayMatches[0]
+                $displayMatches[0]
             }
         }
 
@@ -89,6 +72,7 @@ function Set-FabricPolicySetRules {
             }
             $null = Wait-FabricLongRunningOperation -Response $response -Headers $Headers `
                 -TimeoutSeconds $OperationTimeoutSeconds
+            Write-FpacModernStatus -Message "Created policy: $resourceLabel/$($desiredRule.displayName)" -Status success -Indent 4
             continue
         }
 
@@ -100,6 +84,7 @@ function Set-FabricPolicySetRules {
             if ($deleteResponse.StatusCode -ne 200) {
                 throw "Fabric policy rule deletion for '$ruleId' returned HTTP $($deleteResponse.StatusCode)."
             }
+            Write-FpacModernStatus -Message "Deleted policy: $resourceLabel/$($matchingRule.displayName) (policy type changed)" -Status error -Indent 4
             $createUri = "$script:FabricApiBaseUri/workspaces/$WorkspaceId/policySets/$PolicySetId/policyRules?beta=true"
             $createResponse = Invoke-FabricApiRequest -Method POST -Uri $createUri -Headers $Headers -Body $createBody
             if ($createResponse.StatusCode -notin @(201, 202)) {
@@ -107,6 +92,7 @@ function Set-FabricPolicySetRules {
             }
             $null = Wait-FabricLongRunningOperation -Response $createResponse -Headers $Headers `
                 -TimeoutSeconds $OperationTimeoutSeconds
+            Write-FpacModernStatus -Message "Created policy: $resourceLabel/$($desiredRule.displayName)" -Status success -Indent 4
             continue
         }
 
@@ -119,6 +105,12 @@ function Set-FabricPolicySetRules {
         if ($updateResponse.StatusCode -ne 200) {
             throw "Fabric policy rule update for '$ruleId' returned HTTP $($updateResponse.StatusCode)."
         }
+        if ([string] $matchingRule.displayName -ne [string] $desiredRule.displayName) {
+            Write-FpacModernStatus -Message "Renamed policy: $resourceLabel/$($matchingRule.displayName) -> $($desiredRule.displayName)" -Status update -Indent 4
+        }
+        else {
+            Write-FpacModernStatus -Message "Updated policy: $resourceLabel/$($desiredRule.displayName)" -Status update -Indent 4
+        }
     }
 
     foreach ($deployedRule in $deployedRules) {
@@ -126,16 +118,11 @@ function Set-FabricPolicySetRules {
         if ($matchedRuleIds.Contains($ruleId)) {
             continue
         }
-        $ownership = Get-FpacOwnershipMetadata -Description ([string] $deployedRule.description)
-        $isOwned = $null -ne $ownership -and
-            [string]::Equals($ownership.PacOwnerId, $PacOwnerId, [System.StringComparison]::OrdinalIgnoreCase)
-        if (-not $isOwned -and $DesiredStateStrategy -eq 'OwnedOnly') {
-            continue
-        }
         $uri = "$script:FabricApiBaseUri/workspaces/$WorkspaceId/policySets/$PolicySetId/policyRules/$($ruleId)?beta=true"
         $response = Invoke-FabricApiRequest -Method DELETE -Uri $uri -Headers $Headers
         if ($response.StatusCode -ne 200) {
             throw "Fabric policy rule deletion for '$ruleId' returned HTTP $($response.StatusCode)."
         }
+        Write-FpacModernStatus -Message "Deleted policy: $resourceLabel/$($deployedRule.displayName)" -Status error -Indent 4
     }
 }

@@ -22,9 +22,16 @@ function Write-FpacDetailedChanges {
         [string[]] $ChangedFields = @(),
 
         [Parameter()]
-        [object[]] $Differences = @()
+        [object[]] $Differences = @(),
+
+        [Parameter()]
+        [System.Collections.IDictionary] $CapacityMap = @{}
     )
 
+    if ($Action -eq 'Delete') {
+        Write-FpacModernStatus -Message "Delete: $Name" -Status error -Indent 2
+        return
+    }
     Write-FpacModernStatus -Message "[$ResourceType] Detailed Changes for: $Name" -Status info -Indent 6
     if ($Action -eq 'New') {
         foreach ($line in (($Desired.properties | ConvertTo-Json -Depth 100) -split '\r?\n')) {
@@ -32,33 +39,51 @@ function Write-FpacDetailedChanges {
         }
         return
     }
-    if ($Action -eq 'Delete') {
-        foreach ($line in (($Deployed.properties | ConvertTo-Json -Depth 100) -split '\r?\n')) {
-            Write-FpacColoredOutput -Message "        - $line" -Color Red
-        }
-        return
-    }
-
-    if ($Differences.Count -eq 0) {
+    if ($null -eq $Differences -or $Differences.Count -eq 0) {
         $Differences = @(Get-FpacObjectDifferences -Desired $Desired.properties -Deployed $Deployed.properties -Path 'properties')
     }
     foreach ($difference in $Differences) {
-        Write-FpacModernStatus -Message "Property: $($difference.path)" -Status info -Indent 8
-        if ($difference.change -in @('Remove', 'Replace')) {
+        $propertyLabel = Format-FpacPlanPropertyPath -Path $difference.path
+        Write-FpacModernStatus -Message "Property: $propertyLabel" -Status info -Indent 8
+        if ($difference.change -in @('Remove', 'Replace', 'Adopt')) {
             $oldValue = if ($difference.oldValue -is [string]) {
                 $difference.oldValue
             }
             else {
                 $difference.oldValue | ConvertTo-Json -Depth 100 -Compress
             }
+            if ($difference.path -match '(^|\.)metadata\.pacOwnerId$' -and
+                [string]::IsNullOrWhiteSpace([string] $difference.oldValue)) {
+                $oldValue = '(unowned)'
+            }
+            elseif ($difference.path -eq 'properties.scope.id' -and
+                -not [string]::IsNullOrWhiteSpace([string] $difference.oldValue)) {
+                $oldValue = Format-FpacScopeDisplayName -ScopeKey "Capacity:$($difference.oldValue)" -CapacityMap $CapacityMap
+            }
+            elseif ($null -eq $difference.oldValue) {
+                $oldValue = '(not set)'
+            }
+            elseif ($difference.oldValue -is [string] -and $difference.oldValue.Length -eq 0) {
+                $oldValue = '""'
+            }
             Write-FpacColoredOutput -Message "          - $oldValue" -Color Red
         }
-        if ($difference.change -in @('Add', 'Replace')) {
+        if ($difference.change -in @('Add', 'Replace', 'Adopt')) {
             $newValue = if ($difference.newValue -is [string]) {
                 $difference.newValue
             }
             else {
                 $difference.newValue | ConvertTo-Json -Depth 100 -Compress
+            }
+            if ($difference.path -eq 'properties.scope.id' -and
+                -not [string]::IsNullOrWhiteSpace([string] $difference.newValue)) {
+                $newValue = Format-FpacScopeDisplayName -ScopeKey "Capacity:$($difference.newValue)" -CapacityMap $CapacityMap
+            }
+            elseif ($null -eq $difference.newValue) {
+                $newValue = '(not set)'
+            }
+            elseif ($difference.newValue -is [string] -and $difference.newValue.Length -eq 0) {
+                $newValue = '""'
             }
             Write-FpacColoredOutput -Message "          + $newValue" -Color Green
         }

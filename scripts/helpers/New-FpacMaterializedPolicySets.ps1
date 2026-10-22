@@ -100,14 +100,9 @@ function New-FpacMaterializedPolicySets {
                 }
             }
             $definitionMetadata = Get-FabricPropertyValue -InputObject $definition -Name 'metadata'
-            $definitionOwner = [string] (Get-FabricPropertyValue -InputObject $definitionMetadata -Name 'pacOwnerId')
-            if ([string]::IsNullOrWhiteSpace($definitionOwner)) {
-                $definitionOwner = $PacOwnerId
-            }
             $policies.Add([pscustomobject] [ordered]@{
                 name       = $displayName
                 metadata   = [pscustomobject] [ordered]@{
-                    pacOwnerId = $definitionOwner
                     fpacId     = $definitionName
                 }
                 definition = $definition.properties

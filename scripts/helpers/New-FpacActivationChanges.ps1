@@ -9,9 +9,7 @@ function New-FpacActivationChanges {
 
     $changes = [System.Collections.Generic.List[object]]::new()
     foreach ($desiredPolicySet in $Desired.Values) {
-        if ([string] $desiredPolicySet.properties.status -ne 'Active') {
-            continue
-        }
+        $desiredStatus = [string] $desiredPolicySet.properties.status
         $scopeKey = Get-FpacScopeKey -Scope $desiredPolicySet.properties.scope
         $current = @($Deployed.Values | Where-Object {
             [string] $_.properties.status -eq 'Active' -and
@@ -27,6 +25,11 @@ function New-FpacActivationChanges {
                 [System.StringComparison]::OrdinalIgnoreCase
             )
 
+        if ($desiredStatus -ne 'Active' -and
+            ($desiredStatus -ne 'Inactive' -or -not $isCurrentDesired)) {
+            continue
+        }
+
         $expectedCurrent = if ($current.Count -eq 1) {
             [ordered]@{
                 name         = [string] $current[0].name
@@ -40,7 +43,10 @@ function New-FpacActivationChanges {
         }
         $changes.Add([ordered]@{
             scopeKey       = $scopeKey
-            action         = if ($isCurrentDesired) {
+            action         = if ($desiredStatus -eq 'Inactive') {
+                'Deactivate'
+            }
+            elseif ($isCurrentDesired) {
                 'Maintain'
             }
             elseif ($current.Count -eq 1) {

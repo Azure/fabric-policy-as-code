@@ -13,6 +13,11 @@ function Set-FabricPolicySetOwnership {
         [hashtable] $Headers
     )
 
+    $liveOwner = [string] (Get-FabricPropertyValue -InputObject $ResolvedItem -Name 'PacOwnerId')
+    if (-not [string]::IsNullOrWhiteSpace($liveOwner) -and
+        -not [string]::Equals($liveOwner, $PacOwnerId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Policy Set '$($ResolvedItem.DisplayName)' is owned by '$liveOwner', not configured PAC owner '$PacOwnerId'. Rebuild the plan."
+    }
     $humanDescription = [string] (Get-FabricPropertyValue -InputObject $PolicySet.properties -Name 'description')
     $metadata = Get-FabricPropertyValue -InputObject $PolicySet -Name 'metadata'
     $fpacId = [string] (Get-FabricPropertyValue -InputObject $metadata -Name 'fpacId')
@@ -28,4 +33,5 @@ function Set-FabricPolicySetOwnership {
     if ($response.StatusCode -ne 200) {
         throw "Fabric Policy Set ownership update returned HTTP $($response.StatusCode)."
     }
+    Write-FpacModernStatus -Message "Assigned owner: $($PolicySet.properties.workspace)/$($PolicySet.properties.displayName) -> $PacOwnerId" -Status success -Indent 4
 }

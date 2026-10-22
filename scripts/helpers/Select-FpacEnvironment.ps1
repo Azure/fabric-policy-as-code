@@ -24,7 +24,7 @@ function Select-FpacEnvironment {
             "$(@($environment.Scopes).Count) capacity scope(s)"
         }
         else {
-            'Tenant scope'
+            "Tenant scope (includeCapacities: $($environment.Scopes[0].IncludeCapacities))"
         }
         Write-Host "  [$($index + 1)] $($environment.Name) - $scope"
     }

@@ -66,11 +66,16 @@
     "tenantScope": {
       "type": "object",
       "required": [
-        "type"
+        "type",
+        "includeCapacities"
       ],
       "properties": {
         "type": {
           "const": "Tenant"
+        },
+        "includeCapacities": {
+          "type": "boolean",
+          "description": "True manages tenant and all accessible capacity scopes; false manages only tenant-scoped Policy Sets. Required for tenant scopes."
         }
       },
       "additionalProperties": false

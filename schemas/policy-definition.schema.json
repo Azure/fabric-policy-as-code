@@ -17,13 +17,12 @@
     },
     "metadata": {
       "type": "object",
-      "required": [
-        "pacOwnerId"
-      ],
       "properties": {
         "pacOwnerId": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Deprecated legacy field, accepted but ignored. Policies inherit management from their containing Policy Set.",
+          "deprecated": true
         }
       },
       "additionalProperties": false

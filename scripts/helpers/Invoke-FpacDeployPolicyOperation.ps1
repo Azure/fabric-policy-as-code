@@ -57,6 +57,15 @@ function Invoke-FpacDeployPolicyOperation {
     if ($plan.numberOfChanges -eq 0) {
         throw 'The FPAC deployment plan contains no changes.'
     }
+    if ($target.ScopeType -eq 'Tenant') {
+        $planScopes = @($plan.environment.scopes)
+        $planIncludeCapacities = Get-FabricPropertyValue -InputObject $planScopes[0] -Name 'includeCapacities'
+        if ($planScopes.Count -ne 1 -or $planScopes[0].type -ne 'Tenant' -or
+            $planIncludeCapacities -isnot [bool] -or
+            $planIncludeCapacities -ne $target.Scopes[0].IncludeCapacities) {
+            throw 'Deployment plan tenant scope or includeCapacities does not match the configured environment. Rebuild the plan.'
+        }
+    }
 
     Write-FpacModernHeader -Title 'Fabric Policy as Code (FPAC)' -Subtitle 'Deploying Policy Sets' -HeaderColor Magenta -SubtitleColor Magenta
     Write-FpacModernSection -Title 'Deployment Configuration'
@@ -66,6 +75,22 @@ function Invoke-FpacDeployPolicyOperation {
     Write-FpacModernStatus -Message "Planned changes: $($plan.numberOfChanges)" -Status info
 
     $headers = Get-FabricAuthenticationHeaders -TenantId $target.TenantId
+    $capacityMap = Get-FpacCapacityMap -Headers $headers
+    $target = Resolve-FpacEnvironmentCapacityScopes -Target $target -CapacityMap $capacityMap
+    $plannedResources = [ordered]@{}
+    foreach ($action in @('new', 'update', 'replace', 'adopt', 'delete')) {
+        foreach ($property in $plan.policySets.$action.PSObject.Properties) {
+            $entry = $property.Value
+            if ($action -in @('new', 'delete')) {
+                $plannedResources["$action/$($property.Name)"] = $entry
+            }
+            else {
+                $plannedResources["$action/$($property.Name)/desired"] = $entry.desired
+                $plannedResources["$action/$($property.Name)/deployed"] = $entry.deployed
+            }
+        }
+    }
+    Assert-FpacAssignmentsWithinEnvironment -Assignments $plannedResources -Target $target
     $inventory = Get-FpacDeploymentInventory -Headers $headers
     $activationChanges = @(Get-FabricPropertyValue -InputObject $plan -Name 'activationChanges')
     $activationReplacementCount = Assert-FpacActivationChangesCurrent `
@@ -87,7 +112,11 @@ function Invoke-FpacDeployPolicyOperation {
         Adopted  = 0
     }
 
-    Write-FpacModernSection -Title 'Applying Policy Set Changes'
+    $isPreview = [bool] $WhatIfPreference
+    $skippedPrefix = if ($isPreview) { 'Would' } else { 'Skipped:' }
+    $skippedStatus = if ($isPreview) { 'info' } else { 'skip' }
+    $sectionTitle = if ($isPreview) { 'Previewing Policy Set Changes' } else { 'Applying Policy Set Changes' }
+    Write-FpacModernSection -Title $sectionTitle
     foreach ($name in @($plan.policySets.new.PSObject.Properties | ForEach-Object { $_.Name }) | Sort-Object) {
         $desired = $plan.policySets.new.$name
         $workspaceName = [string] $desired.properties.workspace
@@ -104,12 +133,12 @@ function Invoke-FpacDeployPolicyOperation {
             }).Count -gt 0
             $null = New-FabricPolicySet -PolicySet $desired -WorkspaceId $inventory[$workspaceName].Id `
                 -Headers $headers -OperationTimeoutSeconds $OperationTimeoutSeconds `
-                -AllowActivationReplacement:$replacesActive
+                -AllowActivationReplacement:$replacesActive -CapacityMap $capacityMap
             $result.Created++
-            Write-FpacModernStatus -Message "Created: $workspaceName/$displayName" -Status success
         }
         else {
             $result.Skipped++
+            Write-FpacModernStatus -Message "$skippedPrefix create: $workspaceName/$displayName" -Status $skippedStatus
         }
     }
 
@@ -124,13 +153,13 @@ function Invoke-FpacDeployPolicyOperation {
             Update-FabricPolicySet -PlanEntry $entry -ResolvedItem $resolved -Headers $headers `
                 -OperationTimeoutSeconds $OperationTimeoutSeconds `
                 -PacOwnerId $settings.PacOwnerId `
-                -DesiredStateStrategy $settings.DesiredStateStrategy `
-                -AllowActivationReplacement:$replacesActive
+                -AllowActivationReplacement:$replacesActive -CapacityMap $capacityMap
             $result.Updated++
-            Write-FpacModernStatus -Message "Updated: $label" -Status update
+            Write-FpacModernStatus -Message "Updated: $($entry.desired.properties.workspace)/$($entry.desired.properties.displayName)" -Status update
         }
         else {
             $result.Skipped++
+            Write-FpacModernStatus -Message "$skippedPrefix update: $label" -Status $skippedStatus
         }
     }
 
@@ -154,35 +183,36 @@ function Invoke-FpacDeployPolicyOperation {
                 [System.StringComparison]::OrdinalIgnoreCase
             )
             if ($sameStorageIdentity) {
-                Remove-FabricPolicySet -PolicySet $entry.deployed -ResolvedItem $resolved -Headers $headers
+                Remove-FabricPolicySet -PolicySet $entry.deployed -ResolvedItem $resolved -Headers $headers -CapacityMap $capacityMap
                 $null = New-FabricPolicySet -PolicySet $entry.desired -WorkspaceId $inventory[$newWorkspaceName].Id `
                     -Headers $headers -OperationTimeoutSeconds $OperationTimeoutSeconds `
-                    -AllowActivationReplacement:$AllowActivationReplacement
+                    -AllowActivationReplacement:$AllowActivationReplacement -CapacityMap $capacityMap
             }
             else {
                 $newPolicySetId = New-FabricPolicySet -PolicySet $entry.desired `
                     -WorkspaceId $inventory[$newWorkspaceName].Id `
                     -Headers $headers -OperationTimeoutSeconds $OperationTimeoutSeconds `
-                    -DeferActivation
+                    -DeferActivation -CapacityMap $capacityMap
                 if ([string] $entry.desired.properties.status -eq 'Active') {
                     Set-FabricPolicySetStatus -WorkspaceId $inventory[$newWorkspaceName].Id `
                         -PolicySetId $newPolicySetId `
                         -Scope $entry.desired.properties.scope `
                         -DesiredStatus Active -CurrentStatus Inactive `
-                        -Headers $headers -AllowReplace
+                        -Headers $headers -AllowReplace -ResourceLabel $newLabel -CapacityMap $capacityMap
                 }
                 $skipOldDeactivation = [string] $entry.deployed.properties.status -eq 'Active' -and
                     [string] $entry.desired.properties.status -eq 'Active' -and
                     (Get-FpacScopeKey -Scope $entry.deployed.properties.scope) -eq
                         (Get-FpacScopeKey -Scope $entry.desired.properties.scope)
                 Remove-FabricPolicySet -PolicySet $entry.deployed -ResolvedItem $resolved `
-                    -Headers $headers -SkipDeactivation:$skipOldDeactivation
+                    -Headers $headers -SkipDeactivation:$skipOldDeactivation -CapacityMap $capacityMap
             }
             $result.Replaced++
             Write-FpacModernStatus -Message "Replaced: $oldLabel -> $newLabel" -Status warning
         }
         else {
             $result.Skipped++
+            Write-FpacModernStatus -Message "$skippedPrefix replace: $oldLabel -> $newLabel" -Status $skippedStatus
         }
     }
 
@@ -196,14 +226,13 @@ function Invoke-FpacDeployPolicyOperation {
             Update-FabricPolicySet -PlanEntry $entry -ResolvedItem $resolved -Headers $headers `
                 -OperationTimeoutSeconds $OperationTimeoutSeconds `
                 -PacOwnerId $settings.PacOwnerId `
-                -DesiredStateStrategy $settings.DesiredStateStrategy `
-                -AdoptUnowned `
-                -AllowActivationReplacement:$AllowActivationReplacement
+                -AllowActivationReplacement:$AllowActivationReplacement -CapacityMap $capacityMap
             $result.Adopted++
             Write-FpacModernStatus -Message "Adopted: $label" -Status warning
         }
         else {
             $result.Skipped++
+            Write-FpacModernStatus -Message "$skippedPrefix adopt: $label" -Status $skippedStatus
         }
     }
 
@@ -212,27 +241,38 @@ function Invoke-FpacDeployPolicyOperation {
         $resolved = Resolve-FpacPolicySetItem -Inventory $inventory -PolicySet $deployed
         $label = "$($resolved.WorkspaceName)/$($resolved.DisplayName)"
         if ($PSCmdlet.ShouldProcess($label, 'Delete Fabric Policy Set')) {
-            Remove-FabricPolicySet -PolicySet $deployed -ResolvedItem $resolved -Headers $headers
+            Remove-FabricPolicySet -PolicySet $deployed -ResolvedItem $resolved -Headers $headers -CapacityMap $capacityMap
             $result.Deleted++
             Write-FpacModernStatus -Message "Deleted: $label" -Status error
         }
         else {
             $result.Skipped++
+            Write-FpacModernStatus -Message "$skippedPrefix delete: $label" -Status $skippedStatus
         }
     }
 
     $timer.Stop()
-    Write-FpacModernHeader -Title 'FPAC Deployment Complete' -Subtitle 'Policy Set deployment finished' -HeaderColor Green -SubtitleColor DarkGreen
-    Write-FpacModernStatus -Message "Created: $($result.Created)" -Status success
-    Write-FpacModernStatus -Message "Updated: $($result.Updated)" -Status update
-    Write-FpacModernStatus -Message "Replaced: $($result.Replaced)" -Status warning
-    Write-FpacModernStatus -Message "Adopted: $($result.Adopted)" -Status warning
-    Write-FpacModernStatus -Message "Deleted: $($result.Deleted)" -Status error
-    Write-FpacModernStatus -Message "Skipped: $($result.Skipped)" -Status skip
-    Write-FpacModernStatus -Message "Execution time: $($timer.Elapsed.ToString('mm\:ss\.fff'))" -Status success
-    if ($result.Created + $result.Updated + $result.Replaced + $result.Adopted -gt 0) {
-        Write-FpacModernStatus -Message 'Activation requests were accepted; Fabric enforcement can take up to 15 minutes to propagate.' -Status info
+    if ($isPreview) {
+        Write-FpacModernHeader -Title 'FPAC Deployment Preview Complete' -Subtitle 'No Fabric changes were applied' -HeaderColor Cyan -SubtitleColor Cyan
+        Write-FpacModernStatus -Message "Previewed: $($result.Skipped) Policy Set action(s)" -Status info
     }
+    else {
+        Write-FpacModernHeader -Title 'FPAC Deployment Complete' -Subtitle 'Policy Set deployment finished' -HeaderColor Green -SubtitleColor DarkGreen
+        foreach ($counter in @('Created', 'Updated', 'Replaced', 'Adopted', 'Deleted', 'Skipped')) {
+            if ($result[$counter] -gt 0) {
+                $status = switch ($counter) {
+                    'Deleted' { 'error' }
+                    'Skipped' { 'skip' }
+                    default { 'success' }
+                }
+                Write-FpacModernStatus -Message "$counter`: $($result[$counter])" -Status $status
+            }
+        }
+        if ($result.Created + $result.Updated + $result.Replaced + $result.Adopted + $result.Deleted -eq 0) {
+            Write-FpacModernStatus -Message 'No changes were applied.' -Status info
+        }
+    }
+    Write-FpacModernStatus -Message "Execution time: $($timer.Elapsed.ToString('mm\:ss\.fff'))" -Status success
 
     return [pscustomobject] $result
 }

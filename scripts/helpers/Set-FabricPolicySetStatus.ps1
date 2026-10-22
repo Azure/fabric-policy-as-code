@@ -21,7 +21,13 @@ function Set-FabricPolicySetStatus {
         [hashtable] $Headers,
 
         [Parameter()]
-        [switch] $AllowReplace
+        [switch] $AllowReplace,
+
+        [Parameter()]
+        [string] $ResourceLabel = "$WorkspaceId/$PolicySetId",
+
+        [Parameter()]
+        [System.Collections.IDictionary] $CapacityMap = @{}
     )
 
     if ($DesiredStatus -eq $CurrentStatus) {
@@ -49,5 +55,12 @@ function Set-FabricPolicySetStatus {
 
     if ($response.StatusCode -ne 200) {
         throw "Fabric Policy Set $($DesiredStatus.ToLowerInvariant()) operation returned HTTP $($response.StatusCode)."
+    }
+    $scopeLabel = Format-FpacScopeDisplayName -ScopeKey (Get-FpacScopeKey -Scope $Scope) -CapacityMap $CapacityMap
+    if ($DesiredStatus -eq 'Active') {
+        Write-FpacModernStatus -Message "Activation accepted: $ResourceLabel on $scopeLabel (enforcement can take up to 15 minutes)" -Status success -Indent 4
+    }
+    else {
+        Write-FpacModernStatus -Message "Deactivation accepted: $ResourceLabel on $scopeLabel (enforcement can take up to 15 minutes)" -Status error -Indent 4
     }
 }

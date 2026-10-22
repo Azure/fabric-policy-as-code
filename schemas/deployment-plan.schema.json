@@ -48,7 +48,8 @@
                 "type": "object",
                 "required": [
                   "type",
-                  "capacityId"
+                  "capacityId",
+                  "includeCapacities"
                 ],
                 "properties": {
                   "type": {
@@ -56,6 +57,9 @@
                   },
                   "capacityId": {
                     "type": "null"
+                  },
+                  "includeCapacities": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false

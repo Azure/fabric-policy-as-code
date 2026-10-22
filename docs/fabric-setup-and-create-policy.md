@@ -131,7 +131,8 @@ FPAC uses [global-settings.jsonc](../Definitions/global-settings.jsonc) for name
       "tenantId": "00000000-0000-0000-0000-000000000000",
       "scope": [
         {
-          "type": "Tenant"
+          "type": "Tenant",
+          "includeCapacities": false
         }
       ]
     },
@@ -151,11 +152,21 @@ FPAC uses [global-settings.jsonc](../Definitions/global-settings.jsonc) for name
 }
 ```
 
-The exporter prompts you to select a configured environment; `-EnvironmentName` selects one noninteractively. Every environment has one `tenantId`. A Tenant environment contains one tenant scope and enumerates all Policy Sets visible to that identity, including capacity-scoped sets. A Capacity environment can contain multiple capacity scopes and exports Policy Sets assigned to any configured capacity ID. Scope entries in an environment must all be tenant entries or all be capacity entries; the two types cannot be mixed. The active Az.Accounts tenant must match the selected environment's `tenantId`.
+The exporter prompts you to select a configured environment; `-EnvironmentName` selects one noninteractively. Every environment has one `tenantId`. A Tenant environment contains one tenant scope with a required Boolean `includeCapacities`: `false` selects only tenant-scoped Policy Sets; `true` includes all capacity-scoped sets visible to that identity as well. This boundary applies to export, planning, and deployment. There is no default: missing or invalid values fail settings validation. A Capacity environment can contain multiple capacity scopes and exports Policy Sets assigned to any configured capacity ID; its scope entries must not specify `includeCapacities`. Scope entries in an environment must all be tenant entries or all be capacity entries; the two types cannot be mixed. The active Az.Accounts tenant must match the selected environment's `tenantId`.
 
-Exports place one reusable FPAC policy definition per Fabric rule under `policyDefinitions/`, a value-free reusable composition under `policySets/`, and a compact deployment declaration under `assignments/`. Policy definitions declare parameters without defaults, and every concrete parameter value is stored in the assignment. Every exported deployment target records the source workspace and activation scope together, while its child records the instance display name, activation status, and parameter values.
+After adding or changing `includeCapacities`, regenerate and review the tenant
+deployment plan. Old tenant plans without the property, or plans whose value
+differs from the current environment, cannot be deployed. `true` expands the
+reconciliation boundary, including ownership-based deletion of resources absent
+from desired state; it does not grant access to otherwise inaccessible resources.
+
+Exports place one reusable FPAC policy definition per Fabric rule under `policyDefinitions/`, a value-free reusable composition under `policySetDefinitions/`, and a compact deployment declaration under `policyAssignments/`. Policy definitions declare parameters without defaults, and every concrete parameter value is stored in the assignment. Every exported deployment target records the source workspace and activation scope together, while its child records the instance display name, activation status, and parameter values.
 
 Promote artifacts you intend to manage from the environment export into the flat EPAC-style folders `Definitions/policyDefinitions`, `Definitions/policySetDefinitions`, and `Definitions/policyAssignments`. The `policyAssignments` name is retained for EPAC familiarity, but these files are fan-out deployment declarations rather than Fabric assignment resources.
+
+These names are identical in exports and desired state. Regenerate older exports
+that use `assignments` and `policySets`, or rename those folders before promotion.
+Review relative `$schema` paths when copying artifacts to a different depth.
 
 A single deployment declaration places its display name, parameters, activation state, and environment-keyed `targets` directly under `properties`; no `children` array is needed. Use `children` only when one file defines several deployment variations with different shared values. Every target pairs a storage workspace with an activation `scope` and materializes one real Fabric Policy Set. The workspace only needs to be capacity-backed; it does not need to use the capacity governed by the Policy Set. This permits a central governance workspace to store Policy Sets for several capacities. Capacity scopes use the capacity name without an ID or `type`; tenant-wide scopes use `type: "Tenant"`.
 
@@ -165,7 +176,7 @@ Plan generation validates each target workspace against the workspaces visible t
 
 Use `scripts/Deploy/Build-DeploymentPlans.ps1` to compare `Definitions` with live Fabric state. The read-only operation resolves templates and parameter overrides into concrete Policy Sets, then produces `new`, `update`, `replace`, `adopt`, and `delete` actions only for those real Fabric resources. It rejects multiple desired active Policy Sets for the same scope, including conflicts declared in different FPAC environments.
 
-FPAC stores ownership in Policy Set and Policy Rule descriptions using a marker such as `[[FPAC:v1;owner=contoso-fpac;id=stable-id]]`; the human description remains intact. `OwnedOnly`, the default desired-state strategy, updates and deletes only resources owned by the configured `pacOwnerId` and preserves unowned objects. `Full` can delete unowned objects absent from desired state inside the selected management boundary. A matching unowned object is an adoption in either mode and deployment requires `-AdoptUnowned`. Objects owned by another PAC owner are not silently changed.
+FPAC stores ownership only in Policy Set descriptions using a marker such as `[[FPAC:v1;owner=contoso-fpac;id=stable-id]]`; the human description remains intact. All rules in a managed set are reconciled together, including removing rules absent from desired state. Rules carry identity-only markers such as `[[FPAC:v1;id=stable-policy-id]]`, not independent owners. Legacy rule owner markers are read for identity only and replaced when rules are written. `OwnedOnly`, the default desired-state strategy, manages sets owned by the configured `pacOwnerId` and preserves unrelated unowned sets. `Full` can delete unowned sets absent from desired state inside the selected management boundary. A matching unowned set is an adoption in either mode and deployment requires `-AdoptUnowned`. Policy Sets owned by another PAC owner must not be silently changed.
 
 Use `scripts/Deploy/Deploy-Policy.ps1 -EnvironmentName <name> -WhatIf` to preview the reviewed plan. A real deployment validates that activation state has not changed since planning. If the plan intentionally replaces the active set on a scope, pass `-AllowActivationReplacement`; FPAC will not use Fabric's replacement behavior as an invisible side effect. Capacity-to-capacity reassignment is handled as a deactivate-and-activate update, while a tenant-to-capacity scope-type change requires replacement.
 

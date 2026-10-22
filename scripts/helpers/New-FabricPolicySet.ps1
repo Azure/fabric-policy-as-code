@@ -17,7 +17,10 @@ function New-FabricPolicySet {
         [switch] $AllowActivationReplacement,
 
         [Parameter()]
-        [switch] $DeferActivation
+        [switch] $DeferActivation,
+
+        [Parameter()]
+        [System.Collections.IDictionary] $CapacityMap = @{}
     )
 
     $metadata = Get-FabricPropertyValue -InputObject $PolicySet -Name 'metadata'
@@ -59,11 +62,18 @@ function New-FabricPolicySet {
         $policySetId = [string] $items[0].id
     }
 
+    $workspaceName = [string] (Get-FabricPropertyValue -InputObject $PolicySet.properties -Name 'workspace')
+    if ([string]::IsNullOrWhiteSpace($workspaceName)) { $workspaceName = $WorkspaceId }
+    $resourceLabel = "$workspaceName/$($PolicySet.properties.displayName)"
+    Write-FpacModernStatus -Message "Created: $resourceLabel" -Status success
+    foreach ($policy in @($PolicySet.properties.policies)) {
+        Write-FpacModernStatus -Message "Created policy: $resourceLabel/$($policy.name)" -Status success -Indent 4
+    }
     if (-not $DeferActivation) {
         Set-FabricPolicySetStatus -WorkspaceId $WorkspaceId -PolicySetId $policySetId `
             -Scope $PolicySet.properties.scope -DesiredStatus $PolicySet.properties.status `
             -CurrentStatus 'Inactive' -Headers $Headers `
-            -AllowReplace:$AllowActivationReplacement
+            -AllowReplace:$AllowActivationReplacement -ResourceLabel $resourceLabel -CapacityMap $CapacityMap
     }
     return $policySetId
 }

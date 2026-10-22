@@ -35,7 +35,7 @@ function Invoke-FpacPolicyExportOperation {
         Write-Host "Connecting to FPACEnv '$($target.Name)' (capacities: $($capacityDescriptions -join ', '); tenant $($target.TenantId))..."
     }
     else {
-        Write-Host "Connecting to FPACEnv '$($target.Name)' (tenant $($target.TenantId); all accessible capacities)..."
+        Write-Host "Connecting to FPACEnv '$($target.Name)' (tenant $($target.TenantId); includeCapacities: $($target.Scopes[0].IncludeCapacities))..."
     }
 
     Write-Host "Authentication successful. Exporting FPAC policy artifacts to '$destinationPath'."

@@ -372,8 +372,8 @@ Create two small pay-as-you-go F SKU capacities:
 
 | Capacity | Purpose |
 | --- | --- |
-| `fpac-test-cap-a` | Primary governance and ordinary lifecycle testing |
-| `fpac-test-cap-b` | Multi-capacity, fan-out, isolation, and replacement testing |
+| `fabrictestgslack` | Primary governance and ordinary lifecycle testing |
+| `fabrictestgslack2` | Multi-capacity, fan-out, isolation, and replacement testing |
 
 Start with F2 if it is available in the selected region and supports the required
 Fabric policy preview. Verify subscription quota and regional availability before
@@ -396,13 +396,13 @@ For each capacity:
 3. Select **Create Fabric capacity**.
 4. Select the test subscription.
 5. Create or select `rg-fpac-test`.
-6. Enter `fpac-test-cap-a` for the first capacity.
+6. Enter `fabrictestgslack` for the first capacity.
 7. Select the approved region.
 8. Set the capacity administrator to the interactive test operator or an
    approved administration group.
 9. Select the F2 SKU if available and approved.
 10. Review and create the capacity.
-11. Repeat for `fpac-test-cap-b`.
+11. Repeat for `fabrictestgslack2`.
 
 Record:
 
@@ -422,11 +422,11 @@ Create these nonproduction workspaces in the Fabric portal:
 
 | Workspace | Capacity | Purpose |
 | --- | --- | --- |
-| `FPAC-Governance-A` | `fpac-test-cap-a` | Primary Policy Set storage |
-| `FPAC-App-A1` | `fpac-test-cap-a` | First governed workload workspace |
-| `FPAC-App-A2` | `fpac-test-cap-a` | Multi-workspace fan-out |
-| `FPAC-Governance-B` | `fpac-test-cap-b` | Secondary storage and replacement |
-| `FPAC-App-B1` | `fpac-test-cap-b` | Cross-capacity target |
+| `FPAC-Governance-A` | `fabrictestgslack` | Primary Policy Set storage |
+| `FPAC-App-A1` | `fabrictestgslack` | First governed workload workspace |
+| `FPAC-App-A2` | `fabrictestgslack` | Multi-workspace fan-out |
+| `FPAC-Governance-B` | `fabrictestgslack2` | Secondary storage and replacement |
+| `FPAC-App-B1` | `fabrictestgslack2` | Cross-capacity target |
 | `FPAC-Negative-Unassigned` | No capacity | Negative test for unassigned workspaces |
 
 To create and assign a workspace:
@@ -449,7 +449,13 @@ unassigned target.
 Follow [Fabric setup and manually creating a policy](fabric-setup-and-create-policy.md)
 to:
 
-- Enable the Policies preview tenant setting.
+- As a Fabric administrator or Power Platform administrator, select the
+  **Settings** (gear) icon > **Admin portal** > **Tenant settings**, filter for
+  **Policies**, and enable the Policies preview tenant setting. In tenants where
+  the new administration experience is available, **OneLake catalog** >
+  **Govern** > **Configurations** > **Tenant settings** reaches the same page.
+  If **Configurations** shows only **Support** pages, use the **Admin portal**
+  route instead.
 - Confirm any capacity-level delegated settings.
 - Confirm workspace roles.
 - Confirm capacity-administrator rights.
@@ -460,56 +466,61 @@ capacity-scoped tests have passed.
 
 ## 5. Configure the local FPAC environments
 
+Configure FPAC with the capacities that were actually created:
+
+| FPAC environment | Scope |
+| --- | --- |
+| `FabricTestGSlack` | `fabrictestgslack` and `fabrictestgslack2` |
+| `FabricTestGSlackPrimary` | `fabrictestgslack` only |
+| `Tenant` | The Fabric tenant |
+
+Capacity names must match their Fabric display names exactly. Keep both
+capacities in `FabricTestGSlack` so export, planning, and deployment can test
+cross-capacity behavior without changing configuration. Use
+`FabricTestGSlackPrimary` for tests isolated to the primary capacity.
+
 Update the ignored local file:
 
 ```text
 Definitions/global-settings.jsonc
 ```
 
-Use:
+Replace its contents with the following configuration. Preserve the existing
+tenant ID in place of `<tenant-guid>`:
 
 ```jsonc
 {
   "$schema": "../schemas/global-settings.schema.json",
-  "pacOwnerId": "gregslack-fpac-test",
+  "pacOwnerId": "gregslack-fpac",
   "desiredStateStrategy": "OwnedOnly",
   "environments": [
     {
-      "name": "TestCapacityA",
-      "tenantId": "<tenant-guid>",
-      "scope": [
-        {
-          "name": "fpac-test-cap-a"
-        }
-      ]
-    },
-    {
-      "name": "TestCapacityB",
-      "tenantId": "<tenant-guid>",
-      "scope": [
-        {
-          "name": "fpac-test-cap-b"
-        }
-      ]
-    },
-    {
-      "name": "TestAllCapacities",
-      "tenantId": "<tenant-guid>",
-      "scope": [
-        {
-          "name": "fpac-test-cap-a"
-        },
-        {
-          "name": "fpac-test-cap-b"
-        }
-      ]
-    },
-    {
-      "name": "TestTenant",
+      "name": "Tenant",
       "tenantId": "<tenant-guid>",
       "scope": [
         {
           "type": "Tenant"
+        }
+      ]
+    },
+    {
+      "name": "FabricTestGSlack",
+      "tenantId": "<tenant-guid>",
+      "scope": [
+        {
+          "name": "fabrictestgslack"
+        },
+        {
+          "name": "fabrictestgslack2"
+        }
+      ]
+    },
+    {
+      "name": "FabricTestGSlackPrimary",
+      "tenantId": "<tenant-guid>",
+      "scope": [
+        {
+          "name": "fabrictestgslack"
         }
       ]
     }
@@ -517,8 +528,29 @@ Use:
 }
 ```
 
-Replace `<tenant-guid>` locally. Never commit the operator's tenant-specific
-settings to the public repository.
+Remove the temporary `FakeEnv` entry if it is still present. It contains
+deliberately nonexistent capacity names and isn't part of the test
+environment.
+
+Validate the local configuration:
+
+```powershell
+Get-Content .\Definitions\global-settings.jsonc
+```
+
+Confirm that:
+
+- All three environments use the same Fabric tenant ID.
+- `FabricTestGSlack` contains exactly `fabrictestgslack` and
+  `fabrictestgslack2`.
+- `FabricTestGSlackPrimary` contains only `fabrictestgslack`.
+- `Tenant` contains only `{ "type": "Tenant" }`.
+- `pacOwnerId` remains stable after FPAC starts managing resources; changing it
+  would change ownership identity.
+- No `FakeEnv` entry remains.
+
+`Definitions/global-settings.jsonc` is ignored because it contains
+tenant-specific configuration. Never commit it to the public repository.
 
 ## Phase 2 completion criteria
 
@@ -535,13 +567,19 @@ Phase 2 is complete when:
 
 # Phase 3: Manual end-to-end validation
 
+This phase must prove more than API connectivity. The files under `Definitions`
+are the desired state: planning compares them with Fabric, deployment reconciles
+owned resources to them, and a subsequent plan reports zero drift. An
+out-of-band Fabric change must be detected and corrected from the declared
+state.
+
 ## 1. Create the initial unowned Policy Set
 
 In `FPAC-Governance-A`, create:
 
 ```text
 Policy Set: FPAC E2E Capacity A
-Administrative scope: fpac-test-cap-a
+Administrative scope: fabrictestgslack
 Initial state: Active
 ```
 
@@ -592,14 +630,14 @@ From the repository root:
 
 ```powershell
 .\scripts\operations\Export-PolicyToFPAC.ps1 `
-  -EnvironmentName 'TestCapacityA' `
+  -EnvironmentName 'FabricTestGSlackPrimary' `
   -OutputPath '.\Output'
 ```
 
 Inspect:
 
 ```text
-Output/TestCapacityA/
+Output/FabricTestGSlackPrimary/
   assignments/
   policyDefinitions/
   policySets/
@@ -632,13 +670,13 @@ New-Item -ItemType Directory -Force -Path `
 Copy the exported objects:
 
 ```powershell
-Copy-Item '.\Output\TestCapacityA\assignments\*' `
+Copy-Item '.\Output\FabricTestGSlackPrimary\assignments\*' `
   '.\Definitions\assignments' -Force
 
-Copy-Item '.\Output\TestCapacityA\policyDefinitions\*' `
+Copy-Item '.\Output\FabricTestGSlackPrimary\policyDefinitions\*' `
   '.\Definitions\policyDefinitions' -Force
 
-Copy-Item '.\Output\TestCapacityA\policySets\*' `
+Copy-Item '.\Output\FabricTestGSlackPrimary\policySets\*' `
   '.\Definitions\policySets' -Force
 ```
 
@@ -651,14 +689,14 @@ Run:
 
 ```powershell
 .\scripts\Deploy\Build-DeploymentPlans.ps1 `
-  -EnvironmentName 'TestCapacityA' `
+  -EnvironmentName 'FabricTestGSlackPrimary' `
   -DetailedOutput
 ```
 
 Review:
 
 ```text
-Output/plans-TestCapacityA/policy-plan.json
+Output/plans-FabricTestGSlackPrimary/policy-plan.json
 ```
 
 The matching manually created resource should be classified as `adopt`, not
@@ -668,7 +706,7 @@ Before performing adoption, run deployment in WhatIf mode:
 
 ```powershell
 .\scripts\Deploy\Deploy-Policy.ps1 `
-  -EnvironmentName 'TestCapacityA' `
+  -EnvironmentName 'FabricTestGSlackPrimary' `
   -AdoptUnowned `
   -WhatIf
 ```
@@ -678,7 +716,7 @@ resource:
 
 ```powershell
 .\scripts\Deploy\Deploy-Policy.ps1 `
-  -EnvironmentName 'TestCapacityA' `
+  -EnvironmentName 'FabricTestGSlackPrimary' `
   -Confirm:$false
 ```
 
@@ -690,7 +728,7 @@ After reviewing the plan:
 
 ```powershell
 .\scripts\Deploy\Deploy-Policy.ps1 `
-  -EnvironmentName 'TestCapacityA' `
+  -EnvironmentName 'FabricTestGSlackPrimary' `
   -AdoptUnowned `
   -Confirm:$false
 ```
@@ -708,7 +746,7 @@ Build the plan again:
 
 ```powershell
 .\scripts\Deploy\Build-DeploymentPlans.ps1 `
-  -EnvironmentName 'TestCapacityA' `
+  -EnvironmentName 'FabricTestGSlackPrimary' `
   -DetailedOutput
 ```
 
@@ -730,6 +768,22 @@ Fabric
 ```
 
 ## 8. Complete the lifecycle matrix
+
+### Desired-state reconciliation
+
+1. After achieving zero drift, change an FPAC-owned rule directly in the Fabric
+   portal without changing its file under `Definitions`.
+2. Build a new plan for `FabricTestGSlackPrimary`.
+3. Confirm the plan classifies the resource as `update` and shows the change
+   needed to restore the declared state. It must not import the live edit into
+   `Definitions` or report no change.
+4. Deploy the reviewed plan.
+5. Confirm in Fabric that the rule again matches `Definitions`.
+6. Build the plan once more and confirm zero drift.
+
+This proves that export is an explicit discovery operation, not an automatic
+overwrite of desired state, and that deployment converges Fabric to the
+reviewed declaration.
 
 ### Update
 
@@ -756,12 +810,54 @@ materialized correctly and that workspace names resolve case-insensitively.
 
 ### Cross-capacity fan-out
 
-Use `TestAllCapacities` to target:
+Use `FabricTestGSlack` to target:
 
-- `FPAC-App-A1` on `fpac-test-cap-a`.
-- `FPAC-App-B1` on `fpac-test-cap-b`.
+- `FPAC-App-A1` on `fabrictestgslack`.
+- `FPAC-App-B1` on `fabrictestgslack2`.
 
 Confirm environment boundaries and capacity assignment checks.
+
+### Single-capacity environment isolation
+
+Prove that deploying `FabricTestGSlackPrimary` can't change
+`fabrictestgslack2`, even though `FabricTestGSlack` can manage both capacities:
+
+Before starting, ensure every FPAC-owned deployment on `fabrictestgslack` that
+must be retained is represented under the `FabricTestGSlackPrimary` target.
+With `OwnedOnly`, an owned resource inside the selected primary-capacity
+boundary can legitimately be planned for deletion when it is absent from that
+environment's desired state. That behavior is separate from the isolation
+assertion.
+
+1. In desired state, create or retain an FPAC-owned test deployment whose
+   `targets` entry is `FabricTestGSlackPrimary` and whose scope is
+   `fabrictestgslack`.
+2. Create a distinct FPAC-owned sentinel deployment under the
+   `FabricTestGSlack` target whose scope is `fabrictestgslack2`. Give it a
+   recognizable display name and harmless inactive configuration.
+3. Deploy the sentinel with `FabricTestGSlack`, reach zero drift, and record its
+   item ID, display name, description, status, scope, and rules from Fabric.
+4. Build a plan with:
+
+   ```powershell
+   .\scripts\Deploy\Build-DeploymentPlans.ps1 `
+     -EnvironmentName 'FabricTestGSlackPrimary' `
+     -DetailedOutput
+   ```
+
+5. Inspect every `new`, `update`, `replace`, `adopt`, and `delete` action in
+   `Output/plans-FabricTestGSlackPrimary/policy-plan.json`. Every capacity scope
+   must resolve to `fabrictestgslack`; the plan must not contain the secondary
+   sentinel, its item ID, or the `fabrictestgslack2` capacity ID.
+6. Deploy that exact reviewed plan with `FabricTestGSlackPrimary`.
+7. Read the secondary sentinel from Fabric again and confirm that its recorded
+   item ID, display name, description, status, scope, and rules are unchanged.
+8. Rebuild the `FabricTestGSlackPrimary` plan and confirm zero drift.
+
+Do not use the same active capacity scope in both environment target blocks.
+The cross-environment active-scope validation should reject that ambiguous
+desired state. The sentinel is deliberately scoped only to the secondary
+capacity so a primary-only plan has no reason to discover or modify it.
 
 ### Replacement
 
@@ -813,7 +909,7 @@ Run each case separately and capture the error:
 Test tenant scope last:
 
 1. Create a narrow, harmless tenant-scoped Policy Set.
-2. Export with `TestTenant`.
+2. Export with `Tenant`.
 3. Build and review the plan.
 4. Confirm a Fabric administrator performs activation.
 5. Deactivate or remove the test immediately after validation.
@@ -826,10 +922,12 @@ Create a tracking issue with this table:
 | --- | --- | --- | --- | --- | --- |
 | Export |  |  | N/A |  |  |
 | Adopt |  |  |  |  |  |
+| Desired-state reconciliation | `update` | Restored declaration |  |  |  |
 | Update |  |  |  |  |  |
 | Inactivate/reactivate |  |  |  |  |  |
 | Fan-out |  |  |  |  |  |
 | Cross-capacity |  |  |  |  |  |
+| Single-capacity isolation | No secondary actions | Secondary unchanged |  |  |  |
 | Replace |  |  |  |  |  |
 | Delete |  |  |  |  |  |
 | Stale plan |  | Rejected | N/A |  |  |
@@ -846,7 +944,12 @@ Live validation is complete when:
 - Export completes without unexplained manifest failures.
 - Adoption requires explicit authorization.
 - Update, replacement, deletion, and unchanged classification are correct.
+- An out-of-band change to an owned resource is detected and reconciled back to
+  the declaration under `Definitions`.
 - A deployment followed by planning produces zero drift.
+- A `FabricTestGSlackPrimary` deployment contains no actions for
+  `fabrictestgslack2`, and a secondary-capacity sentinel remains byte-for-byte
+  equivalent at the desired-state level.
 - Stale plans are rejected.
 - `OwnedOnly` preserves unrelated unowned resources.
 - Both capacities remain isolated.
@@ -1298,9 +1401,9 @@ on:
         required: true
         type: choice
         options:
-          - TestCapacityA
-          - TestCapacityB
-          - TestAllCapacities
+          - FabricTestGSlackPrimary
+          - FabricTestGSlack
+          - Tenant
 
 permissions:
   contents: read

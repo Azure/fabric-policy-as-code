@@ -17,15 +17,46 @@ If no Fabric administrator is available, a Microsoft 365 user administrator can 
 
 ### Enable for the whole tenant
 
-To enable policy authoring across the organization, a Fabric administrator should use the tenant-level configuration:
+To enable policy authoring across the organization, a **Fabric administrator**
+or **Power Platform administrator** should use the tenant-level configuration:
 
-1. In the Fabric portal, open the **OneLake catalog**.
-2. Select **Govern** > **Configurations**.
-3. Filter the configurations by the keyword **Policies**, expand the **Policies** section, and set the toggle to **Enabled**.
-4. Under **Apply to**, choose **The entire organization**. To exclude selected groups, choose **Except specific security groups** and select those groups. Alternatively, apply the setting only to selected security groups.
+1. In the Fabric portal, select the **Settings** (gear) icon.
+2. Select **Admin portal** > **Tenant settings**.
+3. Filter the tenant settings by the keyword **Policies**, expand the
+   **Policies** section, and set the toggle to **Enabled**.
+4. Under **Apply to**, choose **The entire organization**. To exclude selected
+   groups, choose **Except specific security groups** and select those groups.
+   Alternatively, apply the setting only to selected security groups.
 5. Select **Apply** to save the change.
 
 This is the setting location to use when you want the **Policies (preview)** feature enabled for the entire tenant. The Microsoft guide calls this the **Policies tenant setting**.
+
+Microsoft is rolling out tenant administration inside **OneLake catalog** >
+**Govern**. In tenants where it is available to the signed-in administrator,
+**Configurations** > **Tenant settings** reaches the same settings. If
+**Configurations** shows only **Support** entries such as **Known issues**,
+**Service health**, and **Support requests**, use the **Admin portal** route
+above instead.
+
+If **Admin portal** or **Tenant settings** isn't available, ask a Microsoft 365
+user administrator to assign the **Fabric administrator** or **Power Platform
+administrator** role, then sign out and back in before retrying. Being a
+capacity administrator or workspace administrator isn't sufficient to change
+an organization-wide tenant setting.
+
+To verify the role, sign in to the
+[Microsoft Entra admin center](https://entra.microsoft.com/) with the same
+account and tenant used in Fabric. Open **Entra ID** > **Users**, select your
+user, and then select **Assigned roles**. Look for an active **Fabric
+Administrator**, **Power Platform Administrator**, or **Global Administrator**
+assignment. These are Microsoft Entra directory roles; they don't appear under
+an Azure subscription's **Access control (IAM)** page.
+
+If the organization uses Privileged Identity Management and the role is
+eligible rather than active, open **Identity governance** > **Privileged
+Identity Management** > **My roles** > **Microsoft Entra roles** and activate
+it. After assignment or activation, sign out of Fabric and sign back in before
+checking **Admin portal** > **Tenant settings** again.
 
 ### Enable or override for one capacity
 

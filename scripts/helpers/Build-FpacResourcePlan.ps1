@@ -43,13 +43,19 @@ function Build-FpacResourcePlan {
         }
 
         $deployedArtifact = $Deployed[$name]
+        $desiredComparisonArtifact = $DesiredComparison[$name]
+        $deployedComparisonArtifact = $DeployedComparison[$name]
+        $changedFields = @(Get-FpacChangedFields -Desired $desiredComparisonArtifact.properties -Deployed $deployedComparisonArtifact.properties)
         $deployedMetadata = Get-FabricPropertyValue -InputObject $deployedArtifact -Name 'metadata'
         $deployedOwner = [string] (Get-FabricPropertyValue -InputObject $deployedMetadata -Name 'pacOwnerId')
         if (-not [string]::IsNullOrWhiteSpace($PacOwnerId) -and
             -not [string]::Equals($deployedOwner, $PacOwnerId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            if (-not [string]::IsNullOrWhiteSpace($deployedOwner)) {
+                throw "$ResourceType resource '$name' is owned by '$deployedOwner', not configured PAC owner '$PacOwnerId'."
+            }
             $plan.adopt[$name] = [ordered]@{
                 name        = $name
-                changes     = @('ownership', 'displayName', 'policies', 'status')
+                changes     = @('ownership') + $changedFields
                 differences = @(
                     [ordered]@{
                         path     = 'metadata.pacOwnerId'
@@ -57,16 +63,14 @@ function Build-FpacResourcePlan {
                         oldValue = if ([string]::IsNullOrWhiteSpace($deployedOwner)) { $null } else { $deployedOwner }
                         newValue = $PacOwnerId
                     }
-                )
+                ) + @(Get-FpacObjectDifferences -Desired $desiredComparisonArtifact.properties `
+                    -Deployed $deployedComparisonArtifact.properties -Path 'properties')
                 desired     = $desiredArtifact
                 deployed    = $deployedArtifact
             }
             Write-FpacModernStatus -Message "Adopt: $name" -Status warning
             continue
         }
-        $desiredComparisonArtifact = $DesiredComparison[$name]
-        $deployedComparisonArtifact = $DeployedComparison[$name]
-        $changedFields = @(Get-FpacChangedFields -Desired $desiredComparisonArtifact.properties -Deployed $deployedComparisonArtifact.properties)
         if ($changedFields.Count -eq 0) {
             $plan.numberUnchanged++
             Write-FpacModernStatus -Message "Unchanged: $name" -Status info

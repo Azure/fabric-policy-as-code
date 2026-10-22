@@ -80,6 +80,9 @@ function Get-FpacGlobalSettings {
             $null = $scopeTypes.Add($scopeType)
 
             if ($scopeType -eq 'Capacity') {
+                if ($null -ne $scope.PSObject.Properties['includeCapacities']) {
+                    throw "includeCapacities is only valid on tenant scope entries in environment '$name'."
+                }
                 $capacityName = [string] (Get-FabricPropertyValue -InputObject $scope -Name 'name')
                 if ([string]::IsNullOrWhiteSpace($capacityName)) {
                     throw "A non-empty environments[].scope[].name is required for capacity environment '$name'."
@@ -94,9 +97,14 @@ function Get-FpacGlobalSettings {
                 })
             }
             else {
+                $includeCapacities = Get-FabricPropertyValue -InputObject $scope -Name 'includeCapacities'
+                if ($includeCapacities -isnot [bool]) {
+                    throw "Tenant environment '$name' must explicitly set environments[].scope[].includeCapacities to true or false."
+                }
                 $scopes.Add([pscustomobject]@{
                     Type = 'Tenant'
                     CapacityId = $null
+                    IncludeCapacities = $includeCapacities
                 })
             }
         }

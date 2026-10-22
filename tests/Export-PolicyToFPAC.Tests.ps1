@@ -148,7 +148,7 @@ Describe 'Invoke-FabricPolicyExport' {
         $policyJson | Should -Not -Match '"fabricRuleId"|"createdDateTime"|"lastModifiedDateTime"'
         (Test-Json -Json $policyJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')) | Should -Be $true
 
-        $policySetFile = Get-ChildItem -LiteralPath (Join-Path $output 'policySets') -Filter '*.json'
+        $policySetFile = Get-ChildItem -LiteralPath (Join-Path $output 'policySetDefinitions') -Filter '*.json'
         $policySet = Get-Content -LiteralPath $policySetFile.FullName -Raw | ConvertFrom-Json
         $policySet.name | Should -Match 'allow-item-creation-.*'
         @($policySet.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
@@ -164,7 +164,8 @@ Describe 'Invoke-FabricPolicyExport' {
         }).Count | Should -Be 0
         (Test-Json -Json (Get-Content -LiteralPath $policySetFile.FullName -Raw) -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')) | Should -Be $true
 
-        $assignmentFile = Get-ChildItem -LiteralPath (Join-Path $output 'assignments') -Filter '*.json'
+        $assignmentFile = Get-ChildItem -LiteralPath (Join-Path $output 'policyAssignments') -Filter '*.json'
+        $assignmentFile.Name | Should -Be "$($policySet.name).json"
         $assignmentJson = Get-Content -LiteralPath $assignmentFile.FullName -Raw
         $assignment = $assignmentJson | ConvertFrom-Json
         @($assignment.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
@@ -199,7 +200,58 @@ Describe 'Invoke-FabricPolicyExport' {
         $manifest.environment.name | Should -Be $script:target.Name
         $manifest.policyCount | Should -Be 2
         $manifest.policySets[0].policyCount | Should -Be 2
+        $manifest.policySets[0].policySetPath | Should -Be (Join-Path 'policySetDefinitions' $policySetFile.Name)
+        $manifest.policySets[0].assignmentPath | Should -Be (Join-Path 'policyAssignments' $assignmentFile.Name)
+        Test-Path -LiteralPath (Join-Path $output $manifest.policySets[0].policySetPath) | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $output $manifest.policySets[0].assignmentPath) | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $output 'policySets') | Should -BeFalse
+        Test-Path -LiteralPath (Join-Path $output 'assignments') | Should -BeFalse
         Test-Path -LiteralPath (Join-Path $output 'schemas') | Should -Be $false
+    }
+
+    It 'keeps assignment filenames independent of the selected environment' {
+        $filenames = foreach ($environment in @('FirstEnvironment', 'SecondEnvironment')) {
+            $script:target.Name = $environment
+            $output = Join-Path $TestDrive $environment
+            $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
+                -Target $script:target -CapacityMap $script:capacityMap
+
+            $result.IsComplete | Should -BeTrue
+            $file = Get-ChildItem -LiteralPath (Join-Path $output 'policyAssignments') -Filter '*.json'
+            $assignment = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+            $file.Name | Should -Not -Match '(?i)firstenvironment|secondenvironment'
+            $assignment.name | Should -Match "^$($environment.ToLowerInvariant())-"
+            @($assignment.properties.targets.PSObject.Properties.Name) | Should -Be @($environment)
+            $file.Name
+        }
+        $filenames.Count | Should -Be 2
+        $filenames[0] | Should -Be $filenames[1]
+    }
+
+    It 'uses exported folders directly as desired state and as a planning snapshot without renaming' {
+        $output = Join-Path $TestDrive 'roundtrip-export'
+        $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
+            -Target $script:target -CapacityMap $script:capacityMap
+
+        $plan = New-FpacDeploymentPlan -DesiredRoot $output -DeployedRoot $output `
+            -Target $script:target -CapacityMap $script:capacityMap `
+            -WorkspaceMap $result.WorkspaceMap -PacOwnerId 'test-owner' `
+            -SchemaReference '../../schemas/deployment-plan.schema.json'
+
+        $plan.policySets.adopt.Count | Should -Be 1
+        $plan.policySets.new.Count | Should -Be 0
+        $plan.policySets.delete.Count | Should -Be 0
+        $adoption = @($plan.policySets.adopt.Values)[0]
+        $adoption.desired.properties.workspace | Should -Be 'Finance'
+        $adoption.desired.properties.policies.Count | Should -Be 2
+        $expectedProperties = $adoption.deployed.properties | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+        foreach ($policy in $expectedProperties.policies) {
+            $policy.metadata.PSObject.Properties.Name | Should -Not -Contain 'pacOwnerId'
+            $policy.metadata.fpacId | Should -Not -BeNullOrEmpty
+        }
+        $adoption.changes | Should -Be @('ownership')
+        ConvertTo-FpacCanonicalJson -InputObject $adoption.desired.properties |
+            Should -Be (ConvertTo-FpacCanonicalJson -InputObject $expectedProperties)
     }
 
     It 'exports all policy scopes when the selected environment is tenant-wide' {
@@ -207,7 +259,7 @@ Describe 'Invoke-FabricPolicyExport' {
         $script:target.ScopeType = 'Tenant'
         $script:target.CapacityId = $null
         $script:target.CapacityIds = @()
-        $script:target.Scopes = @([pscustomobject]@{ Type = 'Tenant'; CapacityId = $null })
+        $script:target.Scopes = @([pscustomobject]@{ Type = 'Tenant'; CapacityId = $null; IncludeCapacities = $true })
         $script:policySetResponse.Body.properties.scope.type = 'Capacity'
         $script:policySetResponse.Body.properties.scope.id = '33333333-3333-3333-3333-333333333333'
 
@@ -218,6 +270,30 @@ Describe 'Invoke-FabricPolicyExport' {
         $result.ExportedCount | Should -Be 1
         $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
         $manifest.policySets[0].scopeType | Should -Be 'Capacity'
+        $manifest.environment.scopes[0].includeCapacities | Should -Be $true
+    }
+
+    It 'filters tenant exports according to includeCapacities=<Include> for <PolicyScope> scope' -ForEach @(
+        @{ Include = $false; PolicyScope = 'Tenant'; Expected = 1 }
+        @{ Include = $false; PolicyScope = 'Capacity'; Expected = 0 }
+        @{ Include = $true; PolicyScope = 'Tenant'; Expected = 1 }
+    ) {
+        $script:target.Name = 'Tenant'
+        $script:target.ScopeType = 'Tenant'
+        $script:target.Scopes = @([pscustomobject]@{
+            Type = 'Tenant'; CapacityId = $null; IncludeCapacities = $Include
+        })
+        $script:policySetResponse.Body.properties.scope.type = $PolicyScope
+        $output = Join-Path $TestDrive "tenant-$Include-$PolicyScope"
+
+        $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
+            -Target $script:target -CapacityMap $script:capacityMap
+
+        $result.IsComplete | Should -BeTrue
+        $result.ExportedCount | Should -Be $Expected
+        $result.SkippedScopeCount | Should -Be (1 - $Expected)
+        $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
+        $manifest.environment.scopes[0].includeCapacities | Should -Be $Include
     }
 
     It 'skips capacity policy sets assigned to another capacity' {
@@ -465,7 +541,7 @@ Describe 'FPAC environments' {
     {
       "name": "Tenant",
       "tenantId": "11111111-1111-1111-1111-111111111111",
-      "scope": [{ "type": "Tenant" }]
+      "scope": [{ "type": "Tenant", "includeCapacities": false }]
     },
     {
       "name": "DevCapacity",
@@ -484,6 +560,7 @@ Describe 'FPAC environments' {
         $settings.Environments.Count | Should -Be 2
         $settings.Environments[0].ScopeType | Should -Be 'Tenant'
         $settings.Environments[0].Scopes.Count | Should -Be 1
+        $settings.Environments[0].Scopes[0].IncludeCapacities | Should -BeFalse
         $settings.Environments[1].Name | Should -Be 'DevCapacity'
         $settings.Environments[1].CapacityIds.Count | Should -Be 0
         $settings.Environments[1].Scopes[1].Name | Should -Be 'Development Two'
@@ -491,7 +568,7 @@ Describe 'FPAC environments' {
 
     It 'selects a configured environment case-insensitively' {
         $environments = @(
-            [pscustomobject]@{ Name = 'Tenant'; ScopeType = 'Tenant'; Scopes = @([pscustomobject]@{ Type = 'Tenant' }) },
+            [pscustomobject]@{ Name = 'Tenant'; ScopeType = 'Tenant'; Scopes = @([pscustomobject]@{ Type = 'Tenant'; IncludeCapacities = $false }) },
             [pscustomobject]@{ Name = 'DevCapacity'; ScopeType = 'Capacity'; Scopes = @([pscustomobject]@{ Name = 'Development' }) }
         )
 
@@ -502,7 +579,7 @@ Describe 'FPAC environments' {
 
     It 'prompts for a numeric environment selection when no name is supplied' {
         $environments = @(
-            [pscustomobject]@{ Name = 'Tenant'; ScopeType = 'Tenant'; Scopes = @([pscustomobject]@{ Type = 'Tenant' }) },
+            [pscustomobject]@{ Name = 'Tenant'; ScopeType = 'Tenant'; Scopes = @([pscustomobject]@{ Type = 'Tenant'; IncludeCapacities = $false }) },
             [pscustomobject]@{ Name = 'DevCapacity'; ScopeType = 'Capacity'; Scopes = @([pscustomobject]@{ Name = 'Development' }) }
         )
         Mock Read-Host { return '2' }
@@ -528,7 +605,7 @@ Describe 'FPAC environments' {
 
     It 'rejects mixed tenant and capacity scopes in one environment' {
         $path = Join-Path $TestDrive 'mixed-scopes.jsonc'
-        Set-Content -LiteralPath $path -Value '{"environments":[{"name":"Mixed","tenantId":"11111111-1111-1111-1111-111111111111","scope":[{"type":"Tenant"},{"name":"Development"}]}]}'
+        Set-Content -LiteralPath $path -Value '{"environments":[{"name":"Mixed","tenantId":"11111111-1111-1111-1111-111111111111","scope":[{"type":"Tenant","includeCapacities":false},{"name":"Development"}]}]}'
 
         $threw = $false
         try {
@@ -538,6 +615,46 @@ Describe 'FPAC environments' {
             $threw = $_.Exception.Message -like '*cannot mix tenant and capacity*'
         }
         $threw | Should -Be $true
+    }
+
+    It 'rejects a missing or non-Boolean includeCapacities: <Setting>' -ForEach @(
+        @{ Setting = '' }
+        @{ Setting = ',"includeCapacities":null' }
+        @{ Setting = ',"includeCapacities":"false"' }
+        @{ Setting = ',"includeCapacities":0' }
+    ) {
+        $path = Join-Path $TestDrive 'invalid-tenant.json'
+        $json = '{"environments":[{"name":"Tenant","tenantId":"11111111-1111-1111-1111-111111111111","scope":[{"type":"Tenant"' + $Setting + '}]}]}'
+        Set-Content -LiteralPath $path -Value $json
+
+        { Get-FpacGlobalSettings -Path $path } | Should -Throw '*includeCapacities*true or false*'
+        (Test-Json -Json $json -SchemaFile (Join-Path $PSScriptRoot '..\schemas\global-settings.schema.json') -ErrorAction SilentlyContinue) |
+            Should -BeFalse
+    }
+
+    It 'accepts explicit tenant includeCapacities=<Include>' -ForEach @(
+        @{ Include = $true }
+        @{ Include = $false }
+    ) {
+        $path = Join-Path $TestDrive 'explicit-tenant.json'
+        $json = @{
+            environments = @(@{
+                name = 'Tenant'
+                tenantId = '11111111-1111-1111-1111-111111111111'
+                scope = @(@{ type = 'Tenant'; includeCapacities = $Include })
+            })
+        } | ConvertTo-Json -Depth 10
+        Set-Content -LiteralPath $path -Value $json
+
+        (Get-FpacGlobalSettings -Path $path).Environments[0].Scopes[0].IncludeCapacities | Should -Be $Include
+        (Test-Json -Json $json -SchemaFile (Join-Path $PSScriptRoot '..\schemas\global-settings.schema.json')) |
+            Should -BeTrue
+    }
+
+    It 'rejects includeCapacities on a capacity scope' {
+        $path = Join-Path $TestDrive 'invalid-capacity-option.json'
+        Set-Content -LiteralPath $path -Value '{"environments":[{"name":"Capacity","tenantId":"11111111-1111-1111-1111-111111111111","scope":[{"name":"Development","includeCapacities":true}]}]}'
+        { Get-FpacGlobalSettings -Path $path } | Should -Throw '*only valid on tenant scope*'
     }
 
     It 'rejects an environment name that is not configured' {

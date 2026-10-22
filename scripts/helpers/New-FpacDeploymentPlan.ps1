@@ -38,10 +38,10 @@ function New-FpacDeploymentPlan {
     $allDesiredDefinitions = Get-FpacArtifactCollection -Path (Join-Path $DesiredRoot 'policyDefinitions')
     $deployedDefinitions = Get-FpacArtifactCollection -Path (Join-Path $DeployedRoot 'policyDefinitions')
     $allDesiredPolicySets = Get-FpacArtifactCollection -Path (Join-Path $DesiredRoot 'policySetDefinitions')
-    $deployedPolicySets = Get-FpacArtifactCollection -Path (Join-Path $DeployedRoot 'policySets')
+    $deployedPolicySets = Get-FpacArtifactCollection -Path (Join-Path $DeployedRoot 'policySetDefinitions')
     $allDesiredAssignmentDefinitions = Get-FpacArtifactCollection -Path (Join-Path $DesiredRoot 'policyAssignments')
-    $allDeployedAssignmentDefinitions = Get-FpacArtifactCollection -Path (Join-Path $DeployedRoot 'assignments')
-    foreach ($artifact in @($allDesiredDefinitions.Values) + @($allDesiredPolicySets.Values)) {
+    $allDeployedAssignmentDefinitions = Get-FpacArtifactCollection -Path (Join-Path $DeployedRoot 'policyAssignments')
+    foreach ($artifact in @($allDesiredPolicySets.Values)) {
         $metadata = Get-FabricPropertyValue -InputObject $artifact -Name 'metadata'
         $artifactOwner = [string] (Get-FabricPropertyValue -InputObject $metadata -Name 'pacOwnerId')
         if (-not [string]::IsNullOrWhiteSpace($artifactOwner) -and
@@ -129,10 +129,14 @@ function New-FpacDeploymentPlan {
             name       = $Target.Name
             tenantId   = $Target.TenantId
             scopes     = @($Target.Scopes | ForEach-Object {
-                [ordered]@{
+                $planScope = [ordered]@{
                     type = $_.Type
                     capacityId = $_.CapacityId
                 }
+                if ($_.Type -eq 'Tenant') {
+                    $planScope.includeCapacities = $_.IncludeCapacities
+                }
+                $planScope
             })
         }
         policySets           = $policySets

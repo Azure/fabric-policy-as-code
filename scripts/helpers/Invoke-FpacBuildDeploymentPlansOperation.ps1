@@ -47,7 +47,9 @@ function Invoke-FpacBuildDeploymentPlansOperation {
     }
 
     $headers = Get-FabricAuthenticationHeaders -TenantId $target.TenantId
-    $capacityMap = Get-FpacCapacityMap -Headers $headers
+    $premiumPerUserCapacityCount = 0
+    $capacityMap = Get-FpacCapacityMap -Headers $headers `
+        -PremiumPerUserCapacityCount ([ref] $premiumPerUserCapacityCount)
     $target = Resolve-FpacEnvironmentCapacityScopes -Target $target -CapacityMap $capacityMap
 
     Write-FpacModernHeader -Title 'Fabric Policy as Code (FPAC)' -Subtitle 'Building Deployment Plans' -HeaderColor Magenta -SubtitleColor Magenta
@@ -56,13 +58,17 @@ function Invoke-FpacBuildDeploymentPlansOperation {
     Write-FpacModernStatus -Message "Definitions Root: $desiredRoot" -Status info
     Write-FpacModernStatus -Message "Tenant ID: $($target.TenantId)" -Status info
     Write-FpacModernStatus -Message "Scope: $($target.ScopeType)" -Status info
+    if ($target.ScopeType -eq 'Tenant') {
+        Write-FpacModernStatus -Message "Include capacities: $($target.Scopes[0].IncludeCapacities)" -Status info
+    }
     if ($target.ScopeType -eq 'Capacity') {
         foreach ($capacityId in @($target.CapacityIds)) {
             Write-FpacModernStatus -Message "Capacity ID: $capacityId" -Status info
         }
     }
 
-    Write-FpacModernStatus -Message "Resolved $($capacityMap.Count) capacity name(s)" -Status success
+    $capacityCount = $capacityMap.Count - $premiumPerUserCapacityCount
+    Write-FpacModernStatus -Message "Resolved $capacityCount capacity name(s) (excluding Premium Per User)" -Status success
     $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "fpac-plan-$([Guid]::NewGuid().ToString('N'))"
     try {
         Write-FpacModernSection -Title 'Retrieving Policy Resources'
@@ -104,21 +110,24 @@ function Invoke-FpacBuildDeploymentPlansOperation {
                 delete = $plan.policySets.delete.Count
             }
         Write-FpacPlanChangeDetails -ResourceType 'Policy Sets' `
-            -ResourcePlan $plan.policySets -DetailedOutput:$DetailedOutput
-        if (@($plan.activationChanges).Count -gt 0) {
+            -ResourcePlan $plan.policySets -DetailedOutput:$DetailedOutput -CapacityMap $capacityMap
+        $activationChanges = @($plan.activationChanges | Where-Object { [string] $_.action -ne 'Maintain' })
+        if ($activationChanges.Count -gt 0) {
             Write-FpacModernSection -Title 'Activation Changes'
-            foreach ($activation in @($plan.activationChanges)) {
-                if ([string] $activation.action -eq 'Maintain') {
-                    Write-FpacModernStatus -Message "Maintain $($activation.desired.workspace)/$($activation.desired.displayName) as active on $($activation.scopeKey)" -Status info
+            foreach ($activation in $activationChanges) {
+                $scopeLabel = Format-FpacScopeDisplayName -ScopeKey $activation.scopeKey -CapacityMap $capacityMap
+                if ([string] $activation.action -eq 'Deactivate') {
+                    Write-FpacModernStatus -Message "Deactivating $($activation.desired.workspace)/$($activation.desired.displayName) on $scopeLabel" -Status error
                     continue
                 }
-                if ($null -eq $activation.expectedCurrent) {
-                    Write-FpacModernStatus -Message "Activate $($activation.desired.workspace)/$($activation.desired.displayName) on $($activation.scopeKey)" -Status warning
+                if ($null -ne $activation.expectedCurrent) {
+                    Write-FpacModernStatus -Message "Deactivating $($activation.expectedCurrent.workspace)/$($activation.expectedCurrent.displayName) on $scopeLabel" -Status error
                 }
-                else {
-                    Write-FpacModernStatus -Message "Activate $($activation.desired.workspace)/$($activation.desired.displayName) on $($activation.scopeKey); replaces $($activation.expectedCurrent.workspace)/$($activation.expectedCurrent.displayName)" -Status warning
-                }
+                Write-FpacModernStatus -Message "Activating $($activation.desired.workspace)/$($activation.desired.displayName) on $scopeLabel" -Status success
             }
+        }
+        else {
+            Write-FpacModernStatus -Message 'No activation changes' -Status info
         }
 
         Write-FpacModernSection -Title 'Deployment Plan Output' -Color Green

@@ -7,7 +7,10 @@ function Write-FpacPlanChangeDetails {
         [System.Collections.IDictionary] $ResourcePlan,
 
         [Parameter()]
-        [switch] $DetailedOutput
+        [switch] $DetailedOutput,
+
+        [Parameter()]
+        [System.Collections.IDictionary] $CapacityMap = @{}
     )
 
     if ($ResourcePlan.numberOfChanges -eq 0) {
@@ -26,24 +29,25 @@ function Write-FpacPlanChangeDetails {
             }
             $label = $action.Substring(0, 1).ToUpperInvariant() + $action.Substring(1)
             $entry = $ResourcePlan[$action][$name]
+            $resource = if ($action -in @('new', 'delete')) { $entry } else { $entry.desired }
+            $resourceLabel = "$($resource.properties.workspace)/$($resource.properties.displayName)"
             $differences = if ($action -in @('update', 'replace', 'adopt')) { @($entry.differences) } else { @() }
-            $changedPaths = @($differences | ForEach-Object path | Sort-Object -Unique)
+            $changedPaths = @($differences | ForEach-Object {
+                Format-FpacPlanPropertyPath -Path $_.path -Summary
+            } | Sort-Object -Unique)
             $suffix = if ($changedPaths.Count -gt 0) { " ($($changedPaths -join ', '))" } else { '' }
-            Write-FpacModernStatus -Message "$label$suffix`: $name" -Status $status -Indent 2
+            Write-FpacModernStatus -Message "$label$suffix`: $resourceLabel" -Status $status -Indent 2
 
-            if (-not $DetailedOutput) {
+            if (-not $DetailedOutput -or $action -eq 'delete') {
                 continue
             }
             if ($action -eq 'new') {
-                Write-FpacDetailedChanges -ResourceType $ResourceType -Action New -Name $name -Desired $entry
-            }
-            elseif ($action -eq 'delete') {
-                Write-FpacDetailedChanges -ResourceType $ResourceType -Action Delete -Name $name -Deployed $entry
+                Write-FpacDetailedChanges -ResourceType $ResourceType -Action New -Name $resourceLabel -Desired $entry -CapacityMap $CapacityMap
             }
             else {
                 Write-FpacDetailedChanges -ResourceType $ResourceType `
-                    -Action $label -Name $name -Desired $entry.desired -Deployed $entry.deployed `
-                    -ChangedFields $entry.changes -Differences $differences
+                    -Action $label -Name $resourceLabel -Desired $entry.desired -Deployed $entry.deployed `
+                    -ChangedFields $entry.changes -Differences $differences -CapacityMap $CapacityMap
             }
         }
     }

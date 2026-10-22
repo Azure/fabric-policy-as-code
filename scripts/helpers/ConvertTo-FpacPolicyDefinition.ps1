@@ -37,7 +37,7 @@ function ConvertTo-FpacPolicyDefinition {
         $conditions.Add($conditionCopy)
     }
 
-    $ownership = Get-FpacOwnershipMetadata -Description ([string] $Rule.description)
+    $fpacId = Get-FpacIdentityFromDescription -Description ([string] $Rule.description)
     $humanDescription = Get-FpacHumanDescription -Description ([string] $Rule.description)
     $properties = [ordered]@{
         displayName = [string] $Rule.displayName
@@ -52,18 +52,13 @@ function ConvertTo-FpacPolicyDefinition {
 
     $artifact = [ordered]@{
         '$schema'   = $SchemaReference
-        name        = if ($null -ne $ownership) {
-            $ownership.FpacId
+        name        = if (-not [string]::IsNullOrWhiteSpace($fpacId)) {
+            $fpacId
         }
         else {
             ConvertTo-FpacIdentifier -DisplayName ([string] $Rule.displayName) -Id ([string] $Rule.id)
         }
         properties  = $properties
-    }
-    if ($null -ne $ownership) {
-        $artifact['metadata'] = [ordered]@{
-            pacOwnerId = $ownership.PacOwnerId
-        }
     }
     return $artifact
 }

@@ -3,6 +3,160 @@ BeforeAll {
     . $scriptPath
 }
 
+Describe 'Tenant environment deployment boundaries' {
+    BeforeEach {
+        Mock Write-FpacModernHeader {}
+        Mock Write-FpacModernSection {}
+        Mock Write-FpacModernStatus {}
+        Mock Get-FabricAuthenticationHeaders { @{} }
+        Mock Get-FpacCapacityMap { @{} }
+        Mock Get-FpacDeploymentInventory {
+            @{ Workspace = [pscustomobject]@{ Id = 'workspace-id'; Name = 'Workspace'; PolicySets = @{} } }
+        }
+        Mock New-FabricPolicySet { 'new-id' }
+        Mock Update-FabricPolicySet {}
+        Mock Remove-FabricPolicySet {}
+        Mock Set-FabricPolicySetOwnership {}
+        $script:settingsPath = Join-Path $TestDrive 'tenant-settings.json'
+        $script:planPath = Join-Path $TestDrive 'tenant-plan.json'
+        $script:schemaPath = Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json'
+        $script:settings = @{
+            pacOwnerId = 'owner'
+            environments = @(@{
+                name = 'Tenant'
+                tenantId = '11111111-1111-1111-1111-111111111111'
+                scope = @(@{ type = 'Tenant'; includeCapacities = $false })
+            })
+        }
+        $script:resource = @{
+            name = 'test'
+            properties = @{
+                workspace = 'Workspace'
+                displayName = 'Test'
+                scope = @{ type = 'Capacity'; id = '22222222-2222-2222-2222-222222222222' }
+                status = 'Inactive'
+                policies = @()
+            }
+        }
+        $script:plan = @{
+            '$schema' = $script:schemaPath
+            createdOn = '2026-10-22 12:00:00Z'
+            pacOwnerId = 'owner'
+            desiredStateStrategy = 'OwnedOnly'
+            environment = @{
+                name = 'Tenant'
+                tenantId = '11111111-1111-1111-1111-111111111111'
+                scopes = @(@{ type = 'Tenant'; capacityId = $null; includeCapacities = $false })
+            }
+            policySets = @{
+                new = @{}; update = @{}; replace = @{}; adopt = @{}; delete = @{}
+                numberOfChanges = 1; numberUnchanged = 0
+            }
+            activationChanges = @()
+            numberOfChanges = 1
+            numberUnchanged = 0
+        }
+    }
+
+    It 'rejects missing includeCapacities before authentication or mutation' {
+        $script:settings.environments[0].scope[0].Remove('includeCapacities')
+        $script:settings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $script:settingsPath
+        $script:plan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $script:planPath
+
+        {
+            Invoke-FpacDeployPolicyOperation -PlanFile $script:planPath -GlobalSettingsPath $script:settingsPath `
+                -SchemaPath $script:schemaPath -MaxRetryAttempts 1 -Confirm:$false
+        } | Should -Throw '*includeCapacities*true or false*'
+        Should -Invoke Get-FabricAuthenticationHeaders -Times 0
+        Should -Invoke New-FabricPolicySet -Times 0
+    }
+
+    It 'rejects a plan generated with a different includeCapacities value: <Include>' -ForEach @(
+        @{ Include = $true }
+        @{ Include = $false }
+    ) {
+        $script:settings.environments[0].scope[0].includeCapacities = $Include
+        $script:plan.environment.scopes[0].includeCapacities = -not $Include
+        $script:settings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $script:settingsPath
+        $script:plan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $script:planPath
+
+        {
+            Invoke-FpacDeployPolicyOperation -PlanFile $script:planPath -GlobalSettingsPath $script:settingsPath `
+                -SchemaPath $script:schemaPath -MaxRetryAttempts 1 -Confirm:$false
+        } | Should -Throw '*includeCapacities does not match*'
+        Should -Invoke Get-FabricAuthenticationHeaders -Times 0
+    }
+
+    It 'deploys tenant and capacity Policy Sets in one environment when explicitly enabled' {
+        $script:settings.environments[0].scope[0].includeCapacities = $true
+        $script:plan.environment.scopes[0].includeCapacities = $true
+        $script:plan.policySets.new.capacity = $script:resource
+        $tenantResource = $script:resource | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $tenantResource.name = 'tenant'
+        $tenantResource.properties.displayName = 'Tenant Set'
+        $tenantResource.properties.scope.type = 'Tenant'
+        $script:plan.policySets.new.tenant = $tenantResource
+        $script:plan.policySets.numberOfChanges = 2
+        $script:plan.numberOfChanges = 2
+        $script:settings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $script:settingsPath
+        $script:plan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $script:planPath
+
+        $result = Invoke-FpacDeployPolicyOperation -PlanFile $script:planPath -GlobalSettingsPath $script:settingsPath `
+            -SchemaPath $script:schemaPath -MaxRetryAttempts 1 -Confirm:$false
+
+        $result.Created | Should -Be 2
+        Should -Invoke New-FabricPolicySet -Times 1 -ParameterFilter { $PolicySet.properties.scope.type -eq 'Tenant' }
+        Should -Invoke New-FabricPolicySet -Times 1 -ParameterFilter { $PolicySet.properties.scope.type -eq 'Capacity' }
+    }
+
+    It 'rejects legacy tenant plans without includeCapacities' {
+        $script:plan.environment.scopes[0].Remove('includeCapacities')
+        $script:plan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $script:planPath
+        { Read-FpacDeploymentPlan -Path $script:planPath -SchemaPath $script:schemaPath } |
+            Should -Throw
+    }
+
+    It 'blocks out-of-scope capacity resources in the <Action> bucket before mutation' -ForEach @(
+        @{ Action = 'new' }; @{ Action = 'update' }; @{ Action = 'replace' }
+        @{ Action = 'adopt' }; @{ Action = 'delete' }
+    ) {
+        $entry = if ($Action -in @('new', 'delete')) { $script:resource }
+        else { @{ desired = $script:resource; deployed = $script:resource } }
+        $script:plan.policySets[$Action].test = $entry
+        $script:settings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $script:settingsPath
+        $script:plan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $script:planPath
+
+        {
+            Invoke-FpacDeployPolicyOperation -PlanFile $script:planPath -GlobalSettingsPath $script:settingsPath `
+                -SchemaPath $script:schemaPath -MaxRetryAttempts 1 -AdoptUnowned -Confirm:$false
+        } | Should -Throw '*outside tenant environment*'
+        Should -Invoke New-FabricPolicySet -Times 0
+        Should -Invoke Update-FabricPolicySet -Times 0
+        Should -Invoke Remove-FabricPolicySet -Times 0
+        Should -Invoke Set-FabricPolicySetOwnership -Times 0
+        Should -Invoke Get-FpacDeploymentInventory -Times 0
+    }
+
+    It 'deploys <PolicyScope> scope with includeCapacities=<Include>' -ForEach @(
+        @{ Include = $true; PolicyScope = 'Tenant' }
+        @{ Include = $true; PolicyScope = 'Capacity' }
+        @{ Include = $false; PolicyScope = 'Tenant' }
+    ) {
+        $script:settings.environments[0].scope[0].includeCapacities = $Include
+        $script:plan.environment.scopes[0].includeCapacities = $Include
+        $script:resource.properties.scope.type = $PolicyScope
+        $script:plan.policySets.new.test = $script:resource
+        $script:settings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $script:settingsPath
+        $script:plan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $script:planPath
+
+        $result = Invoke-FpacDeployPolicyOperation -PlanFile $script:planPath -GlobalSettingsPath $script:settingsPath `
+            -SchemaPath $script:schemaPath -MaxRetryAttempts 1 -Confirm:$false
+
+        $result.Created | Should -Be 1
+        Should -Invoke New-FabricPolicySet -Times 1
+    }
+}
+
 Describe 'FPAC Policy Set deployment' {
     BeforeEach {
         Mock Write-FpacModernHeader {}
@@ -135,7 +289,7 @@ Describe 'FPAC Policy Set deployment' {
         $threw | Should -Be $true
     }
 
-    It 'updates owned rules individually and removes obsolete owned rules' {
+    It 'updates rules by stable identity and removes obsolete rules within the managed set' {
         $policySet = [pscustomobject]@{
             properties = [pscustomobject]@{
                 scope = [pscustomobject]@{ type = 'Capacity'; id = 'capacity-id' }
@@ -182,12 +336,13 @@ Describe 'FPAC Policy Set deployment' {
         }
 
         Set-FabricPolicySetRules -PolicySet $policySet -WorkspaceId 'workspace-id' `
-            -PolicySetId 'set-id' -Headers @{} -PacOwnerId 'fpac'
+            -PolicySetId 'set-id' -Headers @{}
 
         Assert-MockCalled Invoke-FabricApiRequest -Times 1 -ParameterFilter {
             $Method -eq 'PATCH' -and
             $Uri -eq 'https://api.fabric.microsoft.com/v1/workspaces/workspace-id/policySets/set-id/policyRules/old-item-rule?beta=true' -and
-            $Body.displayName -eq 'Item Rule'
+            $Body.displayName -eq 'Item Rule' -and
+            $Body.description -eq '[[FPAC:v1;id=item-rule]]'
         }
         Assert-MockCalled Invoke-FabricApiRequest -Times 1 -ParameterFilter {
             $Method -eq 'DELETE' -and
@@ -302,6 +457,7 @@ Describe 'FPAC Policy Set deployment' {
         }
 
         Mock Get-FabricAuthenticationHeaders { @{} }
+        Mock Get-FpacCapacityMap { @{ TestCapacity = '22222222-2222-2222-2222-222222222222' } }
         Mock Get-FpacDeploymentInventory { $inventory }
         Mock New-FabricPolicySet { 'new-id' }
         Mock Update-FabricPolicySet {}

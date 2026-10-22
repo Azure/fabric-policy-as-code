@@ -32,8 +32,8 @@ function Invoke-FabricPolicyExport {
     }
 
     $definitionRoot = Join-Path $destinationPath 'policyDefinitions'
-    $policySetRoot = Join-Path $destinationPath 'policySets'
-    $assignmentRoot = Join-Path $destinationPath 'assignments'
+    $policySetRoot = Join-Path $destinationPath 'policySetDefinitions'
+    $assignmentRoot = Join-Path $destinationPath 'policyAssignments'
     foreach ($path in @($definitionRoot, $policySetRoot, $assignmentRoot)) {
         New-Item -ItemType Directory -Path $path -Force | Out-Null
     }
@@ -109,8 +109,7 @@ function Invoke-FabricPolicyExport {
                 if ($policyScopeType -notin @('Tenant', 'Capacity')) {
                     throw "Policy Set '$($item.displayName)' returned unsupported scope type '$policyScopeType'."
                 }
-                if ($Target.ScopeType -eq 'Capacity' -and
-                    ($policyScopeType -ne 'Capacity' -or $policyScopeId -notin @($Target.CapacityIds))) {
+                if (-not (Test-FpacScopeWithinEnvironment -Scope $scope -Target $Target)) {
                     $skippedCount++
                     continue
                 }
@@ -119,7 +118,7 @@ function Invoke-FabricPolicyExport {
                 $policySetName = ConvertTo-FpacIdentifier -DisplayName ([string] $item.displayName) -Id ([string] $item.id)
                 $policySetPath = Join-Path $policySetRoot "$policySetName.json"
                 $assignmentName = ConvertTo-FpacIdentifier -DisplayName "$($Target.Name)-$($item.displayName)" -Id ([string] $item.id)
-                $assignmentPath = Join-Path $assignmentRoot "$assignmentName.json"
+                $assignmentPath = Join-Path $assignmentRoot "$policySetName.json"
                 if ((Test-Path -LiteralPath $policySetPath) -or (Test-Path -LiteralPath $assignmentPath)) {
                     throw "An exported Policy Set or assignment already exists for item $($item.id)."
                 }
@@ -266,10 +265,14 @@ function Invoke-FabricPolicyExport {
             name       = $Target.Name
             tenantId   = $Target.TenantId
             scopes     = @($Target.Scopes | ForEach-Object {
-                [ordered]@{
+                $exportScope = [ordered]@{
                     type = $_.Type
                     capacityId = $_.CapacityId
                 }
+                if ($_.Type -eq 'Tenant') {
+                    $exportScope.includeCapacities = $_.IncludeCapacities
+                }
+                $exportScope
             })
         }
         workspaceCount   = $workspaces.Count

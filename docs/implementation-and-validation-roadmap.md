@@ -418,16 +418,24 @@ Do not put access tokens, credentials, or billing data in the public repository.
 
 ## 3. Create the workspaces
 
-Create these nonproduction workspaces in the Fabric portal:
+The following capacity assignments were verified read-only in Fabric on
+2026-10-22. Reuse these existing workspaces; create them only when setting up a
+new environment.
 
 | Workspace | Capacity | Purpose |
 | --- | --- | --- |
-| `FPAC-Governance-A` | `fabrictestgslack` | Primary Policy Set storage |
+| `PolicyTest` | `fabrictestgslack` | Existing primary Policy Set storage and initial adoption target |
+| `FPAC-Governance-A` | `fabrictestgslack` | Empty; reserved for later storage replacement testing |
 | `FPAC-App-A1` | `fabrictestgslack` | First governed workload workspace |
 | `FPAC-App-A2` | `fabrictestgslack` | Multi-workspace fan-out |
-| `FPAC-Governance-B` | `fabrictestgslack2` | Secondary storage and replacement |
-| `FPAC-App-B1` | `fabrictestgslack2` | Cross-capacity target |
+| `FPAC-Governance-B` | `fabrictestgslack2` | Empty; reserved for later storage replacement testing |
+| `FPAC-App-B1` | `fabrictestgslack2` | Existing secondary Policy Set storage and cross-capacity target |
 | `FPAC-Negative-Unassigned` | No capacity | Negative test for unassigned workspaces |
+
+Both named test capacities were active F2 capacities at verification time.
+`My workspace` was also unassigned, but is not a test deployment target.
+The separate `Premium Per User - Reserved` capacity is not part of either FPAC
+capacity environment.
 
 To create and assign a workspace:
 
@@ -472,7 +480,7 @@ Configure FPAC with the capacities that were actually created:
 | --- | --- |
 | `FabricTestGSlack` | `fabrictestgslack` and `fabrictestgslack2` |
 | `FabricTestGSlackPrimary` | `fabrictestgslack` only |
-| `Tenant` | The Fabric tenant |
+| `Tenant` | Tenant-scoped Policy Sets only (`includeCapacities: false`) |
 
 Capacity names must match their Fabric display names exactly. Keep both
 capacities in `FabricTestGSlack` so export, planning, and deployment can test
@@ -499,7 +507,8 @@ tenant ID in place of `<tenant-guid>`:
       "tenantId": "<tenant-guid>",
       "scope": [
         {
-          "type": "Tenant"
+          "type": "Tenant",
+          "includeCapacities": false
         }
       ]
     },
@@ -544,10 +553,19 @@ Confirm that:
 - `FabricTestGSlack` contains exactly `fabrictestgslack` and
   `fabrictestgslack2`.
 - `FabricTestGSlackPrimary` contains only `fabrictestgslack`.
-- `Tenant` contains only `{ "type": "Tenant" }`.
+- `Tenant` contains only `{ "type": "Tenant", "includeCapacities": false }`.
 - `pacOwnerId` remains stable after FPAC starts managing resources; changing it
   would change ownership identity.
 - No `FakeEnv` entry remains.
+
+Every tenant scope must explicitly specify a Boolean `includeCapacities`.
+Settings without it now fail validation, including when another environment is
+selected from the same settings file. Update existing local settings before
+continuing; there is no implicit default. Keep `false` for the isolated
+tenant-only test. Use `true` only when intentionally managing tenant and all
+accessible capacity scopes together, with their desired state declared under
+that environment. Export, planning, and deployment use the same boundary.
+Regenerate tenant plans after adding or changing this setting.
 
 `Definitions/global-settings.jsonc` is ignored because it contains
 tenant-specific configuration. Never commit it to the public repository.
@@ -557,9 +575,9 @@ tenant-specific configuration. Never commit it to the public repository.
 Phase 2 is complete when:
 
 - Both capacities can be resumed and paused.
-- All five capacity-backed workspaces are accessible.
+- All six capacity-backed workspaces listed above are accessible.
 - The negative workspace remains unassigned.
-- Policy Set creation is available in `FPAC-Governance-A`.
+- The existing capacity Policy Set in `PolicyTest` is accessible.
 - The operator can activate a capacity-scoped policy.
 - FPAC can obtain a Fabric token for the target tenant.
 
@@ -573,56 +591,83 @@ owned resources to them, and a subsequent plan reports zero drift. An
 out-of-band Fabric change must be detected and corrected from the declared
 state.
 
-## 1. Create the initial unowned Policy Set
+## 1. Reuse the existing unowned Policy Set
 
-In `FPAC-Governance-A`, create:
+The following Policy Sets were verified read-only on 2026-10-22:
 
-```text
-Policy Set: FPAC E2E Capacity A
-Administrative scope: fabrictestgslack
-Initial state: Active
-```
+| Workspace | Policy Set | Administrative scope | State | FPAC ownership |
+| --- | --- | --- | --- | --- |
+| `PolicyTest` | `PolicySet_capacity` | `fabrictestgslack` | Active | Unowned |
+| `FPAC-App-B1` | `PolicySet_1` | `fabrictestgslack2` | Active | Unowned |
+| `PolicyTest` | `PolicySet_Tenant` | Tenant | Inactive | Unowned |
 
-Create two low-risk `ItemCreation` rules.
+Use `PolicyTest` / `PolicySet_capacity` for the first adoption cycle. Do not
+create another active Policy Set for the same capacity or move the existing
+item into `FPAC-Governance-A`: changing its storage workspace belongs to the
+later replacement test.
+
+Leave `PolicySet_1` active and unowned on the secondary capacity during this
+cycle. Leave `PolicySet_Tenant` inactive and outside the capacity test. Storage
+in `PolicyTest` does not make a tenant-scoped item part of a capacity export;
+the item's administrative scope determines inclusion.
+
+The primary Policy Set already has these two `ItemCreation` rules. Verify them
+without changing their values before adoption.
 
 ### Rule 1: Allowed workspaces
 
 ```text
-Display name: FPAC E2E Allowed Workspaces
+Display name: policy1
 Target property: workspace.id
 Operator: AnyOf
 Values:
-  - FPAC-App-A1
-  - FPAC-App-A2
+  - PolicyTest
 Effect: Allow
 ```
 
 ### Rule 2: Allowed item types
 
 ```text
-Display name: FPAC E2E Allowed Item Types
+Display name: New Policy2
 Target property: item.type
 Operator: AnyOf
+Values:
+  - AnomalyDetector
+  - ApacheAirflowJob
+  - GraphQLApi
+  - AppBackend
+  - MountedDataFactory
 Effect: Allow
 ```
 
-Choose two harmless item types offered by the Fabric Policies UI. Use the values
-returned by Fabric; do not guess internal item-type identifiers.
+Fabric returns a workspace GUID for the first rule; the export should convert
+it to the portable name `PolicyTest`. The item-type identifiers above were
+returned by the live API, not inferred from portal labels.
 
-This Policy Set is intentionally created outside FPAC so the first deployment can
-validate explicit adoption.
+Both rules have an `Allow` effect. This active capacity-scoped configuration can
+affect item creation, so keep this test confined to the dedicated nonproduction
+capacity. Changing the allowed workspaces to `FPAC-App-A1` and `FPAC-App-A2` is
+a later update test, not a prerequisite for adopting the existing configuration.
+
+This Policy Set was created outside FPAC, so the first deployment can validate
+explicit adoption. Recheck ownership before proceeding if another operator has
+changed it since the inspection.
 
 ## 2. Authenticate interactively
 
 From PowerShell 7.4 or later:
 
 ```powershell
-Install-Module Az.Accounts -Scope CurrentUser
-Connect-AzAccount -Tenant '<tenant-guid>'
+Import-Module Az.Accounts
+Connect-AzAccount -Tenant '<tenant-guid>' -UseDeviceAuthentication
 Get-AzContext
 ```
 
+Install `Az.Accounts` with `Install-Module Az.Accounts -Scope CurrentUser` only
+if it is not already installed. Complete the device-code sign-in when prompted.
 Confirm the active tenant matches `Definitions/global-settings.jsonc`.
+This PowerShell sign-in is separate from GitHub sign-in and JIT elevation for
+repository administration.
 
 ## 3. Export the live policy
 
@@ -638,17 +683,20 @@ Inspect:
 
 ```text
 Output/FabricTestGSlackPrimary/
-  assignments/
+  policyAssignments/
   policyDefinitions/
-  policySets/
+  policySetDefinitions/
   manifest.json
 ```
 
 Confirm:
 
 - The manifest reports a complete export.
-- The Policy Set appears once.
+- `PolicySet_capacity` appears once, in `PolicyTest`, scoped to
+  `fabrictestgslack`.
 - Both rules are exported.
+- Neither secondary `PolicySet_1` nor tenant-scoped `PolicySet_Tenant` is
+  exported for `FabricTestGSlackPrimary`.
 - Workspace and capacity references are portable names where FPAC can resolve
   them uniquely.
 - Fabric item IDs and timestamps are not treated as desired state.
@@ -656,32 +704,62 @@ Confirm:
 If the manifest reports failures, stop. Do not promote an incomplete export into
 desired state.
 
+The export destination must be empty. If
+`Output/FabricTestGSlackPrimary` already contains an earlier export, preserve it
+outside that destination before rerunning; do not mix exports or use the older
+`Output/FabricTestGSlack` export for this primary-only cycle.
+
 ## 4. Promote the export into local desired state
 
 Create the folders if they do not exist:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path `
-  '.\Definitions\assignments', `
+  '.\Definitions\policyAssignments', `
   '.\Definitions\policyDefinitions', `
-  '.\Definitions\policySets' | Out-Null
+  '.\Definitions\policySetDefinitions' | Out-Null
 ```
 
-Copy the exported objects:
+Before overwriting local desired state, preserve a copy outside `Definitions`:
 
 ```powershell
-Copy-Item '.\Output\FabricTestGSlackPrimary\assignments\*' `
-  '.\Definitions\assignments' -Force
+$backupPath = Join-Path '.\Output' ("definitions-backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+Copy-Item -LiteralPath '.\Definitions' -Destination $backupPath -Recurse
+```
+
+Review the existing assignments for `PolicyTest` / `PolicySet_capacity`. The
+earlier assignment uses `targets.FabricTestGSlack`; the fresh primary-only
+export uses `targets.FabricTestGSlackPrimary` and a different internal assignment
+name. Exported assignment filenames now omit the environment prefix and match
+the corresponding Policy Set definition filename. Older exports can still have
+environment-prefixed filenames; do not keep both versions after promotion.
+
+Move the superseded assignment for this same item outside
+`Definitions\policyAssignments` after confirming it is included in the backup. Do
+not leave both assignments in desired state, and do not retain the same active
+capacity deployment under both environment target blocks. Keep unrelated
+assignments intact. If the older assignment has intentional local changes,
+review and reconcile them with the fresh export rather than discarding them.
+
+Copy the fresh primary-only exported objects:
+
+```powershell
+Copy-Item '.\Output\FabricTestGSlackPrimary\policyAssignments\*' `
+  '.\Definitions\policyAssignments' -Force
 
 Copy-Item '.\Output\FabricTestGSlackPrimary\policyDefinitions\*' `
   '.\Definitions\policyDefinitions' -Force
 
-Copy-Item '.\Output\FabricTestGSlackPrimary\policySets\*' `
-  '.\Definitions\policySets' -Force
+Copy-Item '.\Output\FabricTestGSlackPrimary\policySetDefinitions\*' `
+  '.\Definitions\policySetDefinitions' -Force
 ```
 
-Review every copied file. Confirm that the target environment name and capacity
-name are correct.
+Review every copied file. Confirm that the assignment targets only
+`FabricTestGSlackPrimary`, uses workspace `PolicyTest` and scope name
+`fabrictestgslack`, and retains the two existing rule values. Confirm each
+`$schema` reference resolves from its new location under `Definitions`; adjust
+relative schema paths after copying if necessary. Do not change the live
+activation state as part of promotion.
 
 ## 5. Build and review the adoption plan
 
@@ -701,6 +779,13 @@ Output/plans-FabricTestGSlackPrimary/policy-plan.json
 
 The matching manually created resource should be classified as `adopt`, not
 `new`, `update`, or `replace`.
+
+For this first cycle, expect exactly one adoption for
+`PolicyTest` / `PolicySet_capacity`, with ownership as the only intended change.
+Stop if the plan proposes rule or status changes, replacement, deletion, or
+actions on the secondary or tenant-scoped Policy Sets. Investigate differences
+before deployment; do not deploy the old
+`Output/plans-FabricTestGSlack/policy-plan.json`.
 
 Before performing adoption, run deployment in WhatIf mode:
 
@@ -913,6 +998,20 @@ Test tenant scope last:
 3. Build and review the plan.
 4. Confirm a Fabric administrator performs activation.
 5. Deactivate or remove the test immediately after validation.
+
+Verify both management modes separately:
+
+- With `includeCapacities: false`, export includes `PolicySet_Tenant`, excludes
+  both capacity Policy Sets, and records the explicit setting in the manifest.
+  Planning must reject capacity assignments in that environment.
+- With `includeCapacities: true`, export includes tenant and both accessible
+  capacity Policy Sets with their original scopes. Before planning or deploying,
+  reconcile environment targets so each retained resource is represented and
+  no active scope is declared under multiple environments.
+- Build and review a fresh plan for each mode. Deployment must reject a plan
+  built with the other mode, a legacy tenant plan without the property, and
+  tenant settings with missing or non-Boolean `includeCapacities`, before
+  any mutation. Do not deploy a broad plan solely to test export inclusion.
 
 ## 9. Record evidence
 

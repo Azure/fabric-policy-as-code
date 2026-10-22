@@ -21,7 +21,7 @@ Describe 'FPAC deployment plans' {
         foreach ($folder in @('policyDefinitions', 'policySetDefinitions', 'policyAssignments')) {
             New-Item -ItemType Directory -Path (Join-Path $script:desiredRoot $folder) -Force | Out-Null
         }
-        foreach ($folder in @('policyDefinitions', 'policySets', 'assignments')) {
+        foreach ($folder in @('policyDefinitions', 'policySetDefinitions', 'policyAssignments')) {
             New-Item -ItemType Directory -Path (Join-Path $script:deployedRoot $folder) -Force | Out-Null
         }
         $script:target = [pscustomobject]@{
@@ -36,6 +36,96 @@ Describe 'FPAC deployment plans' {
                 CapacityId = '22222222-2222-2222-2222-222222222222'
             })
         }
+    }
+
+    It 'enforces tenant assignment boundaries with includeCapacities=<Include>' -ForEach @(
+        @{ Include = $true }
+        @{ Include = $false }
+    ) {
+        $script:target.ScopeType = 'Tenant'
+        $script:target.Scopes = @([pscustomobject]@{
+            Type = 'Tenant'; CapacityId = $null; IncludeCapacities = $Include
+        })
+        $assignments = [ordered]@{
+            tenant = [pscustomobject]@{
+                name = 'tenant'
+                properties = [pscustomobject]@{ scope = [pscustomobject]@{ type = 'Tenant' } }
+            }
+        }
+        { Assert-FpacAssignmentsWithinEnvironment -Assignments $assignments -Target $script:target } |
+            Should -Not -Throw
+        $assignments.capacity = [pscustomobject]@{
+            name = 'capacity'
+            properties = [pscustomobject]@{
+                scope = [pscustomobject]@{ type = 'Capacity'; id = $script:target.CapacityId }
+            }
+        }
+        if ($Include) {
+            { Assert-FpacAssignmentsWithinEnvironment -Assignments $assignments -Target $script:target } |
+                Should -Not -Throw
+        }
+        else {
+            { Assert-FpacAssignmentsWithinEnvironment -Assignments $assignments -Target $script:target } |
+                Should -Throw '*outside tenant environment*'
+        }
+    }
+
+    It 'plans tenant and capacity resources together only when includeCapacities is true' {
+        $script:target.Name = 'Tenant'
+        $script:target.ScopeType = 'Tenant'
+        $script:target.Scopes = @([pscustomobject]@{
+            Type = 'Tenant'; CapacityId = $null; IncludeCapacities = $true
+        })
+        $policySet = @{
+            '$schema' = '../../schemas/policy-set.schema.json'
+            name = 'set'
+            properties = @{ displayName = 'Set'; policies = @() }
+        }
+        Write-FpacJsonFile -Path (Join-Path $script:desiredRoot 'policySetDefinitions\set.json') -Value $policySet
+        $assignment = @{
+            '$schema' = '../../schemas/assignment.schema.json'
+            name = 'deployment'
+            properties = @{
+                policySetName = 'set'; displayName = 'Set'; status = 'Inactive'; parameters = @{}
+                targets = @{
+                    Tenant = @(
+                        @{ workspace = 'TenantWorkspace'; scope = @{ type = 'Tenant' } }
+                        @{ workspace = 'Workspace'; scope = @{ name = 'TestCapacity' } }
+                    )
+                }
+            }
+        }
+        Write-FpacJsonFile -Path (Join-Path $script:desiredRoot 'policyAssignments\deployment.json') -Value $assignment
+        $arguments = @{
+            DesiredRoot = $script:desiredRoot
+            DeployedRoot = $script:deployedRoot
+            Target = $script:target
+            SchemaReference = '../../schemas/deployment-plan.schema.json'
+            CapacityMap = @{ TestCapacity = $script:target.CapacityId }
+        }
+
+        $plan = New-FpacDeploymentPlan @arguments
+        $plan.policySets.new.Count | Should -Be 2
+        @($plan.policySets.new.Values.properties.scope.type | Sort-Object) |
+            Should -Be @('Capacity', 'Tenant')
+        $script:target.Scopes[0].IncludeCapacities = $false
+        { New-FpacDeploymentPlan @arguments } | Should -Throw '*outside tenant environment*'
+    }
+
+    It 'records explicit tenant boundaries in generated plans: <Include>' -ForEach @(
+        @{ Include = $true }
+        @{ Include = $false }
+    ) {
+        $script:target.ScopeType = 'Tenant'
+        $script:target.Scopes = @([pscustomobject]@{
+            Type = 'Tenant'; CapacityId = $null; IncludeCapacities = $Include
+        })
+        $schemaPath = Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json'
+        $plan = New-FpacDeploymentPlan -DesiredRoot $script:desiredRoot -DeployedRoot $script:deployedRoot `
+            -Target $script:target -SchemaReference $schemaPath
+
+        $plan.environment.scopes[0].includeCapacities | Should -Be $Include
+        (Test-Json -Json ($plan | ConvertTo-Json -Depth 100) -SchemaFile $schemaPath) | Should -BeTrue
     }
 
     It 'classifies new update replace delete and unchanged resources' {
@@ -117,7 +207,7 @@ Describe 'FPAC deployment plans' {
             [pscustomobject]@{ name = 'deleted'; parameters = [pscustomobject]@{} }
         )
         Write-FpacJsonFile -Path (Join-Path $script:desiredRoot 'policySetDefinitions\set.json') -Value $policySet
-        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'policySets\set.json') -Value $deployedPolicySet
+        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'policySetDefinitions\set.json') -Value $deployedPolicySet
 
         $desiredAssignment = [ordered]@{
             '$schema' = '../../schemas/assignment.schema.json'
@@ -135,7 +225,7 @@ Describe 'FPAC deployment plans' {
         $deployedAssignment = $desiredAssignment | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $deployedAssignment.properties.scope.id = '33333333-3333-3333-3333-333333333333'
         Write-FpacJsonFile -Path (Join-Path $script:desiredRoot 'policyAssignments\assignment.json') -Value $desiredAssignment
-        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'assignments\assignment.json') -Value $deployedAssignment
+        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'policyAssignments\assignment.json') -Value $deployedAssignment
 
         $plan = New-FpacDeploymentPlan -DesiredRoot $script:desiredRoot `
             -DeployedRoot $script:deployedRoot -Target $script:target `
@@ -304,7 +394,7 @@ Describe 'FPAC deployment plans' {
             }
         }
         Write-FpacJsonFile -Path (Join-Path $script:desiredRoot 'policySetDefinitions\set.json') -Value $desiredSet
-        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'policySets\set.json') -Value $deployedSet
+        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'policySetDefinitions\set.json') -Value $deployedSet
 
         $assignment = [ordered]@{
             '$schema' = '../../schemas/assignment.schema.json'
@@ -326,7 +416,7 @@ Describe 'FPAC deployment plans' {
         Write-FpacJsonFile -Path (Join-Path $script:desiredRoot 'policyAssignments\assignment.json') -Value $assignment
         $deployedAssignment = $assignment | ConvertTo-Json -Depth 100 | ConvertFrom-Json
         $deployedAssignment.properties.parameters.parameterized.condition1Values.value = @('Reflex', 'AnomalyDetector')
-        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'assignments\assignment.json') -Value $deployedAssignment
+        Write-FpacJsonFile -Path (Join-Path $script:deployedRoot 'policyAssignments\assignment.json') -Value $deployedAssignment
 
         $plan = New-FpacDeploymentPlan -DesiredRoot $script:desiredRoot `
             -DeployedRoot $script:deployedRoot -Target $script:target `
@@ -750,7 +840,67 @@ Describe 'FPAC deployment plans' {
             -Deployed $deployed -PacOwnerId 'owner-one' -DesiredStateStrategy OwnedOnly
 
         $plan.adopt.Count | Should -Be 1
+        $plan.adopt.managed.changes | Should -Be @('ownership')
         $plan.delete.Count | Should -Be 0
+    }
+
+    It 'reports real property differences when adopting an unowned active policy set as inactive' {
+        $desired = [ordered]@{
+            set = [pscustomobject]@{
+                name = 'set'
+                metadata = [pscustomobject]@{ pacOwnerId = 'owner-one' }
+                properties = [pscustomobject]@{
+                    displayName = 'Set'; workspace = 'Workspace'; status = 'Inactive'
+                    scope = [pscustomobject]@{ type = 'Tenant' }
+                }
+            }
+        }
+        $live = $desired.set | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $live.metadata.pacOwnerId = ''
+        $live.properties.status = 'Active'
+        $deployed = [ordered]@{ set = $live }
+
+        $plan = Build-FpacResourcePlan -ResourceType 'Policy Sets' -Desired $desired `
+            -Deployed $deployed -PacOwnerId 'owner-one'
+
+        $plan.adopt.set.changes | Should -Be @('ownership', 'status')
+        $statusDifference = @($plan.adopt.set.differences | Where-Object path -EQ 'properties.status')
+        $statusDifference.Count | Should -Be 1
+        $statusDifference[0].oldValue | Should -Be 'Active'
+        $statusDifference[0].newValue | Should -Be 'Inactive'
+        Write-FpacPlanChangeDetails -ResourceType 'Policy Sets' -ResourcePlan $plan
+        Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
+            $Message -eq 'Adopt (Ownership, Status): Workspace/Set'
+        }
+
+        $activations = @(New-FpacActivationChanges -Desired $desired -Deployed $deployed)
+        $activations.Count | Should -Be 1
+        $activations[0].action | Should -Be 'Deactivate'
+        $activations[0].expectedCurrent.displayName | Should -Be 'Set'
+        $activations[0].scopeKey | Should -Be 'Tenant'
+    }
+
+    It 'does not propose deactivation when desired inactive policy is already inactive or another set is active' -ForEach @(
+        @{ LiveStatus = 'Inactive'; LiveName = 'desired' }
+        @{ LiveStatus = 'Active'; LiveName = 'other' }
+    ) {
+        $desired = [ordered]@{
+            desired = [pscustomobject]@{
+                name = 'desired'
+                properties = [pscustomobject]@{
+                    status = 'Inactive'; scope = [pscustomobject]@{ type = 'Tenant' }
+                }
+            }
+        }
+        $deployed = [ordered]@{
+            live = [pscustomobject]@{
+                name = $LiveName
+                properties = [pscustomobject]@{
+                    status = $LiveStatus; scope = [pscustomobject]@{ type = 'Tenant' }
+                }
+            }
+        }
+        @(New-FpacActivationChanges -Desired $desired -Deployed $deployed).Count | Should -Be 0
     }
 
     It 'detects active scope conflicts across FPAC environments' {
@@ -800,6 +950,35 @@ Describe 'FPAC deployment plans' {
         $threw | Should -Be $true
     }
 
+    It 'counts PPU SKUs separately without removing lookup entries or matching display names' {
+        Mock Get-FabricPagedCollection {
+            @(
+                [pscustomobject]@{ id = 'first'; displayName = 'First'; sku = 'F2' }
+                [pscustomobject]@{ id = 'second'; displayName = 'Premium Per User - Reserved'; sku = 'F2' }
+                [pscustomobject]@{ id = 'ppu'; displayName = 'Different name'; sku = 'PP3' }
+            )
+        }
+        $ppuCount = -1
+
+        $map = Get-FpacCapacityMap -Headers @{} -PremiumPerUserCapacityCount ([ref] $ppuCount)
+
+        $map.Count | Should -Be 3
+        $ppuCount | Should -Be 1
+        ($map.Count - $ppuCount) | Should -Be 2
+        $map['Different name'] | Should -Be 'ppu'
+        $map['Premium Per User - Reserved'] | Should -Be 'second'
+    }
+
+    It 'reports zero PPU entries when no PPU SKU is returned' {
+        Mock Get-FabricPagedCollection {
+            @([pscustomobject]@{ id = 'first'; displayName = 'First'; sku = 'F2' })
+        }
+        $ppuCount = -1
+        $map = Get-FpacCapacityMap -Headers @{} -PremiumPerUserCapacityCount ([ref] $ppuCount)
+        $ppuCount | Should -Be 0
+        $map.Count | Should -Be 1
+    }
+
     It 'resolves environment capacity names from live Fabric capacities' {
         Mock Get-FabricPagedCollection {
             return @([pscustomobject]@{
@@ -832,7 +1011,13 @@ Describe 'FPAC deployment plans' {
         $assignments.Count | Should -Be 0
     }
 
-    It 'builds the plan file through the operation workflow' {
+    It 'builds the plan file and shows only activation changes: <Scenario>' -ForEach @(
+        @{ Scenario = 'no entries'; Actions = @(); ExpectedChanges = 0 }
+        @{ Scenario = 'maintain only'; Actions = @('Maintain'); ExpectedChanges = 0 }
+        @{ Scenario = 'activate'; Actions = @('Activate'); ExpectedChanges = 1 }
+        @{ Scenario = 'deactivate'; Actions = @('Deactivate'); ExpectedChanges = 1 }
+        @{ Scenario = 'mixed'; Actions = @('Maintain', 'Activate', 'Replace'); ExpectedChanges = 2 }
+    ) {
         $definitionsRoot = Join-Path $TestDrive 'definitions'
         foreach ($folder in @('policyDefinitions', 'policySetDefinitions', 'policyAssignments')) {
             New-Item -ItemType Directory -Path (Join-Path $definitionsRoot $folder) -Force | Out-Null
@@ -883,10 +1068,15 @@ Describe 'FPAC deployment plans' {
             return @{ Authorization = '******' }
         }
         Mock Get-FpacCapacityMap {
-            return @{ TestCapacity = $script:target.CapacityId }
+            $PremiumPerUserCapacityCount.Value = 1
+            return @{
+                TestCapacity = $script:target.CapacityId
+                SecondCapacity = '33333333-3333-3333-3333-333333333333'
+                PpuCapacity = '44444444-4444-4444-4444-444444444444'
+            }
         }
         Mock Invoke-FabricPolicyExport {
-            foreach ($folder in @('policyDefinitions', 'policySets', 'assignments')) {
+            foreach ($folder in @('policyDefinitions', 'policySetDefinitions', 'policyAssignments')) {
                 New-Item -ItemType Directory -Path (Join-Path $Destination $folder) -Force | Out-Null
             }
             return [pscustomobject]@{
@@ -897,6 +1087,24 @@ Describe 'FPAC deployment plans' {
                 WorkspaceMap = @{ 'Test Workspace' = 'workspace-id' }
             }
         }
+
+        $script:testActivationChanges = @(
+            foreach ($action in $Actions) {
+                [pscustomobject]@{
+                    scopeKey = "Capacity:$($script:target.CapacityId)"
+                    action = $action
+                    desired = [pscustomobject]@{
+                        name = 'desired'
+                        workspace = 'Test Workspace'
+                        displayName = 'Set'
+                    }
+                    expectedCurrent = if ($action -eq 'Activate') { $null } else {
+                        [pscustomobject]@{ name = 'current'; workspace = 'Test Workspace'; displayName = 'Current Set' }
+                    }
+                }
+            }
+        )
+        Mock New-FpacActivationChanges { $script:testActivationChanges }
 
         $outputRoot = Join-Path $TestDrive 'output'
         $result = Invoke-FpacBuildDeploymentPlansOperation `
@@ -912,12 +1120,52 @@ Describe 'FPAC deployment plans' {
             $ActivityVerb -eq 'Retrieving'
         }
         Assert-MockCalled Get-FpacCapacityMap -Times 1 -Exactly
+        Assert-MockCalled Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
+            $Message -eq 'Resolved 2 capacity name(s) (excluding Premium Per User)' -and $Status -eq 'success'
+        }
         Assert-MockCalled Write-FpacModernSection -Times 1 -ParameterFilter {
             $Title -eq 'Policy Sets Change Details'
+        }
+        Should -Invoke Write-FpacModernStatus -Times 0 -Exactly -ParameterFilter {
+            $Message -like 'Maintain *'
+        }
+        $activationCount = @($Actions | Where-Object { $_ -in @('Activate', 'Replace') }).Count
+        Should -Invoke Write-FpacModernStatus -Times $activationCount -Exactly -ParameterFilter {
+            $Message -eq 'Activating Test Workspace/Set on Capacity: TestCapacity' -and $Status -eq 'success'
+        }
+        $deactivationCount = @($Actions | Where-Object { $_ -eq 'Deactivate' }).Count
+        Should -Invoke Write-FpacModernStatus -Times $deactivationCount -Exactly -ParameterFilter {
+            $Message -eq 'Deactivating Test Workspace/Set on Capacity: TestCapacity' -and
+            $Status -eq 'error'
+        }
+        if ($ExpectedChanges -eq 0) {
+            Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'No activation changes'
+            }
+            Should -Invoke Write-FpacModernSection -Times 0 -Exactly -ParameterFilter {
+                $Title -eq 'Activation Changes'
+            }
+        }
+        else {
+            Should -Invoke Write-FpacModernStatus -Times 0 -Exactly -ParameterFilter {
+                $Message -eq 'No activation changes'
+            }
+            Should -Invoke Write-FpacModernSection -Times 1 -Exactly -ParameterFilter {
+                $Title -eq 'Activation Changes'
+            }
+            if ($Actions -contains 'Replace') {
+                Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
+                    $Message -eq 'Deactivating Test Workspace/Current Set on Capacity: TestCapacity' -and
+                    $Status -eq 'error'
+                }
+            }
         }
         Test-Path -LiteralPath $result.PlanFile | Should -Be $true
         $planJson = Get-Content -LiteralPath $result.PlanFile -Raw
         $plan = $planJson | ConvertFrom-Json
+        @($plan.activationChanges).Count | Should -Be $Actions.Count
+        @($plan.activationChanges | Where-Object action -EQ 'Maintain').Count |
+            Should -Be @($Actions | Where-Object { $_ -eq 'Maintain' }).Count
         $newPolicySet = $plan.policySets.new.PSObject.Properties['test-workspace-set'].Value
         $newPolicySet.properties.policies[0].name | Should -Be 'New'
         $plan.'$schema' | Should -Be (Get-FpacSchemaReference `
@@ -925,5 +1173,18 @@ Describe 'FPAC deployment plans' {
             -SchemaPath (Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json'))
         Test-Json -Json $planJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\deployment-plan.schema.json') |
             Should -Be $true
+    }
+}
+
+Describe 'Activation summary colors' {
+    It 'renders <Verb> in <ExpectedColor>' -ForEach @(
+        @{ Verb = 'Deactivating'; Status = 'error'; ExpectedColor = [ConsoleColor]::Red }
+        @{ Verb = 'Activating'; Status = 'success'; ExpectedColor = [ConsoleColor]::Green }
+    ) {
+        Mock Write-FpacColoredOutput {}
+        Write-FpacModernStatus -Message "$Verb PolicyTest/PolicySet_Tenant on Tenant" -Status $Status
+        Should -Invoke Write-FpacColoredOutput -Times 1 -Exactly -ParameterFilter {
+            $Color -eq $ExpectedColor -and $Message -like "*$Verb PolicyTest/PolicySet_Tenant on Tenant"
+        }
     }
 }

@@ -42,13 +42,13 @@ function New-FabricPolicySetDefinition {
         }
 
         $policyMetadata = Get-FabricPropertyValue -InputObject $policy -Name 'metadata'
-        $policyOwner = [string] (Get-FabricPropertyValue -InputObject $policyMetadata -Name 'pacOwnerId')
         $policyId = [string] (Get-FabricPropertyValue -InputObject $policyMetadata -Name 'fpacId')
-        $description = [string] (Get-FabricPropertyValue -InputObject $definition -Name 'description')
-        if (-not [string]::IsNullOrWhiteSpace($policyOwner) -and -not [string]::IsNullOrWhiteSpace($policyId)) {
-            $description = Format-FpacOwnershipDescription -Description $description `
-                -PacOwnerId $policyOwner -FpacId $policyId
+        if ([string]::IsNullOrWhiteSpace($policyId)) {
+            $policyId = [string] $policy.name
         }
+        $description = [string] (Get-FabricPropertyValue -InputObject $definition -Name 'description')
+        $description = Format-FpacOwnershipDescription -Description $description `
+            -IdentityOnly -FpacId $policyId
         $rule = [ordered]@{
             displayName = [string] $definition.displayName
             policy      = [string] $definition.policy

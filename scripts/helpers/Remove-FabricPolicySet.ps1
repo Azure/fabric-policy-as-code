@@ -10,7 +10,10 @@ function Remove-FabricPolicySet {
         [hashtable] $Headers,
 
         [Parameter()]
-        [switch] $SkipDeactivation
+        [switch] $SkipDeactivation,
+
+        [Parameter()]
+        [System.Collections.IDictionary] $CapacityMap = @{}
     )
 
     if (-not $SkipDeactivation -and [string] $PolicySet.properties.status -eq 'Active') {
@@ -19,7 +22,8 @@ function Remove-FabricPolicySet {
             -Scope $PolicySet.properties.scope `
             -DesiredStatus 'Inactive' `
             -CurrentStatus 'Active' `
-            -Headers $Headers
+            -Headers $Headers -ResourceLabel "$($ResolvedItem.WorkspaceName)/$($ResolvedItem.DisplayName)" `
+            -CapacityMap $CapacityMap
     }
 
     $uri = "$script:FabricApiBaseUri/workspaces/$($ResolvedItem.WorkspaceId)/policySets/$($ResolvedItem.PolicySetId)"

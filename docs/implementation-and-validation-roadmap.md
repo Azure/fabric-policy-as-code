@@ -1144,9 +1144,7 @@ generated output.
 
 # Phase 5: Build the documentation site
 
-Use MkDocs Material, following the general model used by EPAC:
-
-<https://azure.github.io/enterprise-azure-policy-as-code/>
+Use MkDocs Material to build the FPAC documentation site.
 
 ## 1. Add the documentation dependencies
 

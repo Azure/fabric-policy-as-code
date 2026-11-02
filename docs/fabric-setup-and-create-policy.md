@@ -119,7 +119,7 @@ Git integration can version policy-set definitions, but Git alone doesn't activa
 
 ## FPAC target configuration
 
-FPAC uses [global settings](configuration.md) for named environments, following EPAC's environment-selection pattern:
+FPAC uses [global settings](configuration.md) to define named environments:
 
 ```json
 {
@@ -162,7 +162,7 @@ from desired state; it does not grant access to otherwise inaccessible resources
 
 Exports place one reusable FPAC policy definition per Fabric rule under `policyDefinitions/`, a value-free reusable composition under `policySetDefinitions/`, and a compact deployment declaration under `policyAssignments/`. Policy definitions declare parameters without defaults, and every concrete parameter value is stored in the assignment. Every exported deployment target records the source workspace and activation scope together, while its child records the instance display name, activation status, and parameter values.
 
-Promote artifacts you intend to manage from the environment export into the flat EPAC-style folders `Definitions/policyDefinitions`, `Definitions/policySetDefinitions`, and `Definitions/policyAssignments`. The `policyAssignments` name is retained for EPAC familiarity, but these files are fan-out deployment declarations rather than Fabric assignment resources.
+Promote artifacts you intend to manage from the environment export into the flat desired-state folders `Definitions/policyDefinitions`, `Definitions/policySetDefinitions`, and `Definitions/policyAssignments`. Files in `policyAssignments` are fan-out deployment declarations rather than Fabric assignment resources.
 
 These names are identical in exports and desired state. Regenerate older exports
 that use `assignments` and `policySets`, or rename those folders before promotion.

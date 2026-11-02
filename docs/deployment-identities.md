@@ -1,18 +1,17 @@
 # Deployment identities and permissions
 
-## EPAC model, adapted to Fabric
+## FPAC identity model
 
-EPAC recommends one read-only planning service principal per tenant, separate
-policy deployment principals per environment, and separate identities for
-Azure role deployment. See its
-[app registration guidance](https://azure.github.io/enterprise-azure-policy-as-code/ci-cd-app-registrations/)
-and [GitHub Actions guidance](https://azure.github.io/enterprise-azure-policy-as-code/ci-cd-github-actions/).
+Use separate planning and deployment service principals with federated
+credentials to maintain separation of duties. Use one planning principal per
+tenant, optionally split further by environment, and a separate deployment
+principal for each environment.
 
-FPAC adopts the separation of duties and federated credentials, **not EPAC's
-Azure RBAC assignments**. Azure `Reader`, `Resource Policy Contributor`, and
+Fabric resource permissions are separate from Azure RBAC assignments.
+Azure `Reader`, `Resource Policy Contributor`, and
 `Role Based Access Control Administrator` do not grant Fabric workspace/item
 permissions. FPAC does not deploy Azure role assignments, so there is no
-equivalent role-deployment action.
+role-deployment action.
 
 | Identity | Boundary | Access |
 |---|---|---|

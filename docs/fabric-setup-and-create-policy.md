@@ -119,7 +119,7 @@ Git integration can version policy-set definitions, but Git alone doesn't activa
 
 ## FPAC target configuration
 
-FPAC uses [global-settings.jsonc](../Definitions/global-settings.jsonc) for named environments, following EPAC's environment-selection pattern:
+FPAC uses [global settings](configuration.md) for named environments, following EPAC's environment-selection pattern:
 
 ```json
 {
@@ -195,4 +195,4 @@ Use `scripts/Deploy/Deploy-Policy.ps1 -EnvironmentName <name> -WhatIf` to previe
 - [Understand Microsoft Fabric admin roles](https://learn.microsoft.com/fabric/admin/roles)
 - [Fabric September 2026 feature summary](https://community.fabric.microsoft.com/blog/fbc_fabricupdatesblogs/fabric-september-2026-feature-summary/5325825)
 - [SBL Fabric Policies internal wiki](https://supportability.visualstudio.com/Fabric/_wiki/wikis/Fabric/2988420/SBL-Fabric-Policies) (requires access to the internal Azure DevOps organization)
-- [FPAC global settings](../Definitions/global-settings.jsonc)
+- [FPAC global settings](configuration.md)

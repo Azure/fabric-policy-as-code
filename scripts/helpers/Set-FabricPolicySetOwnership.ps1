@@ -33,5 +33,5 @@ function Set-FabricPolicySetOwnership {
     if ($response.StatusCode -ne 200) {
         throw "Fabric Policy Set ownership update returned HTTP $($response.StatusCode)."
     }
-    Write-FpacModernStatus -Message "Assigned owner: $($PolicySet.properties.workspace)/$($PolicySet.properties.displayName) -> $PacOwnerId" -Status success -Indent 4
+    Write-FpacModernStatus -Message "Assigned owner: $PacOwnerId" -Status success -Indent 4
 }

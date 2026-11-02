@@ -10,7 +10,10 @@ function Write-FpacPlanChangeDetails {
         [switch] $DetailedOutput,
 
         [Parameter()]
-        [System.Collections.IDictionary] $CapacityMap = @{}
+        [System.Collections.IDictionary] $CapacityMap = @{},
+
+        [Parameter()]
+        [System.Collections.IDictionary] $WorkspaceMap = @{}
     )
 
     if ($ResourcePlan.numberOfChanges -eq 0) {
@@ -42,12 +45,13 @@ function Write-FpacPlanChangeDetails {
                 continue
             }
             if ($action -eq 'new') {
-                Write-FpacDetailedChanges -ResourceType $ResourceType -Action New -Name $resourceLabel -Desired $entry -CapacityMap $CapacityMap
+                Write-FpacDetailedChanges -ResourceType $ResourceType -Action New -Name $resourceLabel -Desired $entry `
+                    -CapacityMap $CapacityMap -WorkspaceMap $WorkspaceMap
             }
             else {
                 Write-FpacDetailedChanges -ResourceType $ResourceType `
                     -Action $label -Name $resourceLabel -Desired $entry.desired -Deployed $entry.deployed `
-                    -ChangedFields $entry.changes -Differences $differences -CapacityMap $CapacityMap
+                    -ChangedFields $entry.changes -Differences $differences -CapacityMap $CapacityMap -WorkspaceMap $WorkspaceMap
             }
         }
     }

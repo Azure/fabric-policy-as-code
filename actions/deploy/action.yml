@@ -1,0 +1,57 @@
+name: FPAC deploy
+description: Authenticate with GitHub OIDC and deploy an approved, hash-verified Fabric policy plan.
+inputs:
+  module-version:
+    description: Exact module version used by the planning job.
+    required: true
+  tenant-id:
+    description: Microsoft Entra tenant ID.
+    required: true
+  client-id:
+    description: Application ID of the environment-specific deployment service principal.
+    required: true
+  environment-name:
+    description: FPAC environment name in global-settings.jsonc.
+    required: true
+  global-settings-path:
+    description: Settings from the same commit used for planning.
+    default: Definitions/global-settings.jsonc
+  plan-file:
+    description: Downloaded, reviewed plan file. This action never rebuilds it.
+    required: true
+  plan-sha256:
+    description: SHA-256 output from the trusted planning job.
+    required: true
+  allow-activation-replacement:
+    description: Explicitly permit reviewed activation replacement (true or false).
+    default: 'false'
+  adopt-unowned:
+    description: Explicitly permit reviewed adoption of unowned sets (true or false).
+    default: 'false'
+  what-if:
+    description: Preview without changing Fabric (true or false).
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Deploy reviewed FPAC plan
+      shell: pwsh
+      env:
+        FPAC_ACTION_ROOT: ${{ github.action_path }}
+        FPAC_OPERATION: Deploy
+        FPAC_MODULE_VERSION: ${{ inputs.module-version }}
+        FPAC_TENANT_ID: ${{ inputs.tenant-id }}
+        FPAC_CLIENT_ID: ${{ inputs.client-id }}
+        FPAC_ENVIRONMENT: ${{ inputs.environment-name }}
+        FPAC_DEFINITIONS_PATH: ''
+        FPAC_OUTPUT_PATH: ''
+        FPAC_GLOBAL_SETTINGS_PATH: ${{ inputs.global-settings-path }}
+        FPAC_PLAN_FILE: ${{ inputs.plan-file }}
+        FPAC_PLAN_SHA256: ${{ inputs.plan-sha256 }}
+        FPAC_DETAILED_OUTPUT: 'false'
+        FPAC_ALLOW_ACTIVATION_REPLACEMENT: ${{ inputs.allow-activation-replacement }}
+        FPAC_ADOPT_UNOWNED: ${{ inputs.adopt-unowned }}
+        FPAC_WHAT_IF: ${{ inputs.what-if }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        & (Join-Path $env:FPAC_ACTION_ROOT '../shared/Invoke-FpacAction.ps1')

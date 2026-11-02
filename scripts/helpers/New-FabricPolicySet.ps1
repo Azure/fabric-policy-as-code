@@ -67,7 +67,7 @@ function New-FabricPolicySet {
     $resourceLabel = "$workspaceName/$($PolicySet.properties.displayName)"
     Write-FpacModernStatus -Message "Created: $resourceLabel" -Status success
     foreach ($policy in @($PolicySet.properties.policies)) {
-        Write-FpacModernStatus -Message "Created policy: $resourceLabel/$($policy.name)" -Status success -Indent 4
+        Write-FpacModernStatus -Message "Created policy: $($policy.name)" -Status success -Indent 4
     }
     if (-not $DeferActivation) {
         Set-FabricPolicySetStatus -WorkspaceId $WorkspaceId -PolicySetId $policySetId `

@@ -24,9 +24,6 @@ function Set-FabricPolicySetRules {
     $desiredRules = @($content.policyRules)
     $deployedRules = @(Get-FabricPolicyRules -WorkspaceId $WorkspaceId -PolicySetId $PolicySetId -Headers $Headers)
     $matchedRuleIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $workspaceName = [string] (Get-FabricPropertyValue -InputObject $PolicySet.properties -Name 'workspace')
-    if ([string]::IsNullOrWhiteSpace($workspaceName)) { $workspaceName = $WorkspaceId }
-    $resourceLabel = "$workspaceName/$([string] (Get-FabricPropertyValue -InputObject $PolicySet.properties -Name 'displayName'))"
 
     foreach ($desiredRule in $desiredRules) {
         $desiredRuleDescription = [string] (Get-FabricPropertyValue -InputObject $desiredRule -Name 'description')
@@ -72,7 +69,7 @@ function Set-FabricPolicySetRules {
             }
             $null = Wait-FabricLongRunningOperation -Response $response -Headers $Headers `
                 -TimeoutSeconds $OperationTimeoutSeconds
-            Write-FpacModernStatus -Message "Created policy: $resourceLabel/$($desiredRule.displayName)" -Status success -Indent 4
+            Write-FpacModernStatus -Message "Created policy: $($desiredRule.displayName)" -Status success -Indent 4
             continue
         }
 
@@ -84,7 +81,7 @@ function Set-FabricPolicySetRules {
             if ($deleteResponse.StatusCode -ne 200) {
                 throw "Fabric policy rule deletion for '$ruleId' returned HTTP $($deleteResponse.StatusCode)."
             }
-            Write-FpacModernStatus -Message "Deleted policy: $resourceLabel/$($matchingRule.displayName) (policy type changed)" -Status error -Indent 4
+            Write-FpacModernStatus -Message "Deleted policy: $($matchingRule.displayName) (policy type changed)" -Status error -Indent 4
             $createUri = "$script:FabricApiBaseUri/workspaces/$WorkspaceId/policySets/$PolicySetId/policyRules?beta=true"
             $createResponse = Invoke-FabricApiRequest -Method POST -Uri $createUri -Headers $Headers -Body $createBody
             if ($createResponse.StatusCode -notin @(201, 202)) {
@@ -92,7 +89,7 @@ function Set-FabricPolicySetRules {
             }
             $null = Wait-FabricLongRunningOperation -Response $createResponse -Headers $Headers `
                 -TimeoutSeconds $OperationTimeoutSeconds
-            Write-FpacModernStatus -Message "Created policy: $resourceLabel/$($desiredRule.displayName)" -Status success -Indent 4
+            Write-FpacModernStatus -Message "Created policy: $($desiredRule.displayName)" -Status success -Indent 4
             continue
         }
 
@@ -106,10 +103,10 @@ function Set-FabricPolicySetRules {
             throw "Fabric policy rule update for '$ruleId' returned HTTP $($updateResponse.StatusCode)."
         }
         if ([string] $matchingRule.displayName -ne [string] $desiredRule.displayName) {
-            Write-FpacModernStatus -Message "Renamed policy: $resourceLabel/$($matchingRule.displayName) -> $($desiredRule.displayName)" -Status update -Indent 4
+            Write-FpacModernStatus -Message "Renamed policy: $($matchingRule.displayName) -> $($desiredRule.displayName)" -Status update -Indent 4
         }
         else {
-            Write-FpacModernStatus -Message "Updated policy: $resourceLabel/$($desiredRule.displayName)" -Status update -Indent 4
+            Write-FpacModernStatus -Message "Updated policy: $($desiredRule.displayName)" -Status update -Indent 4
         }
     }
 
@@ -123,6 +120,6 @@ function Set-FabricPolicySetRules {
         if ($response.StatusCode -ne 200) {
             throw "Fabric policy rule deletion for '$ruleId' returned HTTP $($response.StatusCode)."
         }
-        Write-FpacModernStatus -Message "Deleted policy: $resourceLabel/$($deployedRule.displayName)" -Status error -Indent 4
+        Write-FpacModernStatus -Message "Deleted policy: $($deployedRule.displayName)" -Status error -Indent 4
     }
 }

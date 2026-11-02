@@ -147,6 +147,7 @@ function Invoke-FpacDeployPolicyOperation {
         $resolved = Resolve-FpacPolicySetItem -Inventory $inventory -PolicySet $entry.deployed
         $label = "$($resolved.WorkspaceName)/$($resolved.DisplayName)"
         if ($PSCmdlet.ShouldProcess($label, 'Update Fabric Policy Set')) {
+            Write-FpacModernStatus -Message "Policy Set: $label" -Status info -Indent 2
             $replacesActive = @($activationChanges | Where-Object {
                 $_.desired.name -eq $entry.desired.name -and $_.action -eq 'Replace'
             }).Count -gt 0
@@ -155,7 +156,6 @@ function Invoke-FpacDeployPolicyOperation {
                 -PacOwnerId $settings.PacOwnerId `
                 -AllowActivationReplacement:$replacesActive -CapacityMap $capacityMap
             $result.Updated++
-            Write-FpacModernStatus -Message "Updated: $($entry.desired.properties.workspace)/$($entry.desired.properties.displayName)" -Status update
         }
         else {
             $result.Skipped++
@@ -221,6 +221,7 @@ function Invoke-FpacDeployPolicyOperation {
         $resolved = Resolve-FpacPolicySetItem -Inventory $inventory -PolicySet $entry.deployed
         $label = "$($resolved.WorkspaceName)/$($resolved.DisplayName)"
         if ($PSCmdlet.ShouldProcess($label, "Adopt Fabric Policy Set into PAC owner '$($settings.PacOwnerId)'")) {
+            Write-FpacModernStatus -Message "Policy Set: $label" -Status info -Indent 2
             Set-FabricPolicySetOwnership -PolicySet $entry.desired -ResolvedItem $resolved `
                 -PacOwnerId $settings.PacOwnerId -Headers $headers
             Update-FabricPolicySet -PlanEntry $entry -ResolvedItem $resolved -Headers $headers `
@@ -228,7 +229,6 @@ function Invoke-FpacDeployPolicyOperation {
                 -PacOwnerId $settings.PacOwnerId `
                 -AllowActivationReplacement:$AllowActivationReplacement -CapacityMap $capacityMap
             $result.Adopted++
-            Write-FpacModernStatus -Message "Adopted: $label" -Status warning
         }
         else {
             $result.Skipped++

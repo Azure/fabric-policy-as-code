@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Pester
+      - name: Install test dependencies
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -35,6 +35,7 @@ jobs:
             -Scope CurrentUser `
             -Force `
             -SkipPublisherCheck
+          Install-Module Az.Accounts -MinimumVersion 5.0.1 -Scope CurrentUser -Force
 
       - name: Run tests
         shell: pwsh

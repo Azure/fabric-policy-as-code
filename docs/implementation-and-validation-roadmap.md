@@ -695,6 +695,8 @@ Confirm:
 - `PolicySet_capacity` appears once, in `PolicyTest`, scoped to
   `fabrictestgslack`.
 - Both rules are exported.
+- Policy definitions, Policy Set definitions, and assignments use `.jsonc`;
+  `manifest.json` remains standard JSON.
 - Neither secondary `PolicySet_1` nor tenant-scoped `PolicySet_Tenant` is
   exported for `FabricTestGSlackPrimary`.
 - Workspace and capacity references are portable names where FPAC can resolve
@@ -733,6 +735,11 @@ export uses `targets.FabricTestGSlackPrimary` and a different internal assignmen
 name. Exported assignment filenames now omit the environment prefix and match
 the corresponding Policy Set definition filename. Older exports can still have
 environment-prefixed filenames; do not keep both versions after promotion.
+New authoring files use `.jsonc`. Existing `.json` definitions remain readable,
+including mixed extensions in the same folder, but never keep both files for the
+same artifact identity. Rename older definitions in place to preserve their
+contents and existing name-based references. Comments and trailing commas are
+supported in all three definition folders.
 
 Move the superseded assignment for this same item outside
 `Definitions\policyAssignments` after confirming it is included in the backup. Do

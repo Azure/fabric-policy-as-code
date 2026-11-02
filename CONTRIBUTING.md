@@ -109,6 +109,9 @@ request has been merged.
 | `schemas/` | Canonical FPAC JSON schemas |
 | `tests/` | Pester tests |
 | `docs/` | Project and operator documentation |
+| `Module/` | Module manifest, public commands, and allowlisted package builder |
+| `actions/` | OIDC-authenticated planning and deployment composite actions |
+| `examples/workflows/` | Consumer repository workflow examples |
 
 The following local directories are intentionally ignored:
 
@@ -192,6 +195,11 @@ Update documentation when changing:
 
 Run any documentation validation workflow included by the repository before
 requesting review.
+
+Build the staged module and documentation as described in
+[packaging and releases](docs/releases.md). The documentation site is published
+from the package release commit after Gallery publication, not on every push
+to `main`. PR checks build the site without publishing it.
 
 ## Commit and pull-request guidance
 

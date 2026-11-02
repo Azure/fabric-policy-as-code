@@ -132,7 +132,7 @@ Describe 'Invoke-FabricPolicyExport' {
         $result.PolicyCount | Should -Be 2
         $result.FailureCount | Should -Be 0
 
-        $policyFiles = @(Get-ChildItem -LiteralPath (Join-Path $output 'policyDefinitions') -Filter '*.json')
+        $policyFiles = @(Get-ChildItem -LiteralPath (Join-Path $output 'policyDefinitions') -Filter '*.jsonc')
         $policyFiles.Count | Should -Be 2
         $policyJson = Get-Content -LiteralPath $policyFiles[0].FullName -Raw
         $policy = $policyJson | ConvertFrom-Json
@@ -148,7 +148,7 @@ Describe 'Invoke-FabricPolicyExport' {
         $policyJson | Should -Not -Match '"fabricRuleId"|"createdDateTime"|"lastModifiedDateTime"'
         (Test-Json -Json $policyJson -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-definition.schema.json')) | Should -Be $true
 
-        $policySetFile = Get-ChildItem -LiteralPath (Join-Path $output 'policySetDefinitions') -Filter '*.json'
+        $policySetFile = Get-ChildItem -LiteralPath (Join-Path $output 'policySetDefinitions') -Filter '*.jsonc'
         $policySet = Get-Content -LiteralPath $policySetFile.FullName -Raw | ConvertFrom-Json
         $policySet.name | Should -Match 'allow-item-creation-.*'
         @($policySet.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
@@ -164,8 +164,8 @@ Describe 'Invoke-FabricPolicyExport' {
         }).Count | Should -Be 0
         (Test-Json -Json (Get-Content -LiteralPath $policySetFile.FullName -Raw) -SchemaFile (Join-Path $PSScriptRoot '..\schemas\policy-set.schema.json')) | Should -Be $true
 
-        $assignmentFile = Get-ChildItem -LiteralPath (Join-Path $output 'policyAssignments') -Filter '*.json'
-        $assignmentFile.Name | Should -Be "$($policySet.name).json"
+        $assignmentFile = Get-ChildItem -LiteralPath (Join-Path $output 'policyAssignments') -Filter '*.jsonc'
+        $assignmentFile.Name | Should -Be "$($policySet.name).jsonc"
         $assignmentJson = Get-Content -LiteralPath $assignmentFile.FullName -Raw
         $assignment = $assignmentJson | ConvertFrom-Json
         @($assignment.PSObject.Properties.Name) | Should -Be @('$schema', 'name', 'properties')
@@ -217,7 +217,7 @@ Describe 'Invoke-FabricPolicyExport' {
                 -Target $script:target -CapacityMap $script:capacityMap
 
             $result.IsComplete | Should -BeTrue
-            $file = Get-ChildItem -LiteralPath (Join-Path $output 'policyAssignments') -Filter '*.json'
+            $file = Get-ChildItem -LiteralPath (Join-Path $output 'policyAssignments') -Filter '*.jsonc'
             $assignment = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
             $file.Name | Should -Not -Match '(?i)firstenvironment|secondenvironment'
             $assignment.name | Should -Match "^$($environment.ToLowerInvariant())-"
@@ -252,6 +252,33 @@ Describe 'Invoke-FabricPolicyExport' {
         $adoption.changes | Should -Be @('ownership')
         ConvertTo-FpacCanonicalJson -InputObject $adoption.desired.properties |
             Should -Be (ConvertTo-FpacCanonicalJson -InputObject $expectedProperties)
+    }
+
+    It 'plans exported JSONC definitions with comments and trailing commas in every authoring folder' {
+        $output = Join-Path $TestDrive 'commented-export'
+        $result = Invoke-FabricPolicyExport -Headers $script:headers -Destination $output `
+            -Target $script:target -CapacityMap $script:capacityMap
+        $files = @(
+            foreach ($folder in @('policyDefinitions', 'policySetDefinitions', 'policyAssignments')) {
+                Get-ChildItem -LiteralPath (Join-Path $output $folder) -File
+            }
+        )
+        $files.Count | Should -Be 4
+        foreach ($file in $files) {
+            $file.Extension | Should -Be '.jsonc'
+            $content = (Get-Content -LiteralPath $file.FullName -Raw).TrimEnd() -replace '}$', ",`n}"
+            Set-Content -LiteralPath $file.FullName -Value "// Authoring comment`n/* Block comment */`n$content"
+        }
+
+        $plan = New-FpacDeploymentPlan -DesiredRoot $output -DeployedRoot $output `
+            -Target $script:target -CapacityMap $script:capacityMap `
+            -WorkspaceMap $result.WorkspaceMap -PacOwnerId 'test-owner' `
+            -SchemaReference '../../schemas/deployment-plan.schema.json'
+
+        $plan.policySets.adopt.Count | Should -Be 1
+        @($plan.policySets.adopt.Values)[0].changes | Should -Be @('ownership')
+        Test-Path -LiteralPath (Join-Path $output 'manifest.json') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $output 'manifest.jsonc') | Should -BeFalse
     }
 
     It 'exports all policy scopes when the selected environment is tenant-wide' {

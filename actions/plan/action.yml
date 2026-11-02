@@ -1,0 +1,62 @@
+name: FPAC plan
+description: Authenticate with GitHub OIDC and build a Fabric policy deployment plan.
+inputs:
+  module-version:
+    description: Exact released FabricPolicyAsCode module version (for example 0.1.0).
+    required: true
+  tenant-id:
+    description: Microsoft Entra tenant ID.
+    required: true
+  client-id:
+    description: Application ID of the read-only planning service principal.
+    required: true
+  environment-name:
+    description: FPAC environment name in global-settings.jsonc.
+    required: true
+  definitions-path:
+    description: Desired-state directory in the checked-out consumer repository.
+    default: Definitions
+  global-settings-path:
+    description: FPAC global settings file.
+    default: Definitions/global-settings.jsonc
+  output-path:
+    description: Directory for generated plans.
+    default: Output
+  detailed-output:
+    description: Include policy property changes in the planning log (true or false).
+    default: 'true'
+outputs:
+  has-changes:
+    description: True when the plan contains changes, otherwise false.
+    value: ${{ steps.plan.outputs.has-changes }}
+  plan-file:
+    description: Absolute plan path; empty for a no-change result.
+    value: ${{ steps.plan.outputs.plan-file }}
+  plan-sha256:
+    description: SHA-256 of the generated plan; empty for a no-change result.
+    value: ${{ steps.plan.outputs.plan-sha256 }}
+runs:
+  using: composite
+  steps:
+    - name: Build FPAC plan
+      id: plan
+      shell: pwsh
+      env:
+        FPAC_ACTION_ROOT: ${{ github.action_path }}
+        FPAC_OPERATION: Plan
+        FPAC_MODULE_VERSION: ${{ inputs.module-version }}
+        FPAC_TENANT_ID: ${{ inputs.tenant-id }}
+        FPAC_CLIENT_ID: ${{ inputs.client-id }}
+        FPAC_ENVIRONMENT: ${{ inputs.environment-name }}
+        FPAC_DEFINITIONS_PATH: ${{ inputs.definitions-path }}
+        FPAC_GLOBAL_SETTINGS_PATH: ${{ inputs.global-settings-path }}
+        FPAC_OUTPUT_PATH: ${{ inputs.output-path }}
+        FPAC_PLAN_FILE: ''
+        FPAC_PLAN_SHA256: ''
+        FPAC_DETAILED_OUTPUT: ${{ inputs.detailed-output }}
+        FPAC_ALLOW_ACTIVATION_REPLACEMENT: 'false'
+        FPAC_ADOPT_UNOWNED: 'false'
+        FPAC_WHAT_IF: 'false'
+      run: |
+        $ErrorActionPreference = 'Stop'
+        & (Join-Path $env:FPAC_ACTION_ROOT '../shared/Invoke-FpacAction.ps1')

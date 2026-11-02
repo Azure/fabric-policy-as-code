@@ -159,7 +159,7 @@ names rather than filenames, so renaming does not change policy composition or
 assignment targets. Schemas, export manifests, deployment plans, and native
 Fabric payloads remain standard `.json`.
 
-The canonical JSON Schemas are maintained once under [`schemas/`](https://github.com/Azure/fabric-policy-as-code/tree/main/schemas); exports reference those root files instead of copying a schema folder into every environment. Like EPAC artifacts, every policy definition, Policy Set definition, and deployment declaration has `$schema`, an FPAC-friendly `name`, and the natural Fabric content under `properties`. Owned Policy Set definitions also carry FPAC ownership in root `metadata`; individual policy definitions do not carry ownership. Fabric IDs, timestamps, and other incidental service metadata are not exported. Policy definitions and Policy Set definitions are reusable templates, not independent Fabric resources. Files under `policyAssignments/` retain the EPAC-inspired folder name but are FPAC fan-out declarations. Every target pairs the workspace where one concrete Policy Set item lives with the scope where it is active.
+The canonical JSON Schemas are maintained once under [`schemas/`](https://github.com/Azure/fabric-policy-as-code/tree/main/schemas); exports reference those root files instead of copying a schema folder into every environment. Every policy definition, Policy Set definition, and deployment declaration has `$schema`, an FPAC-friendly `name`, and the natural Fabric content under `properties`. Owned Policy Set definitions also carry FPAC ownership in root `metadata`; individual policy definitions do not carry ownership. Fabric IDs, timestamps, and other incidental service metadata are not exported. Policy definitions and Policy Set definitions are reusable templates, not independent Fabric resources. Files under `policyAssignments/` are FPAC fan-out declarations. Every target pairs the workspace where one concrete Policy Set item lives with the scope where it is active.
 
 Export and desired state use the same three folder names; no folder renaming is
 needed when promoting an export. Older exports using `assignments/` and
@@ -205,7 +205,7 @@ names in detailed console output, including new-policy content. Unresolved
 references retain their IDs. Saved plans and deployment payloads retain the
 original IDs; this name conversion is display-only.
 
-FPAC uses the same flat desired-state layout as EPAC:
+FPAC uses a flat desired-state layout:
 
 ```text
 Definitions/
@@ -224,7 +224,7 @@ Capacity entries contain only a capacity `name`; omitting `type` identifies them
 
 Planning also resolves every target workspace name against the workspaces returned by Fabric. Workspace matching is case-insensitive. A missing workspace, an inaccessible workspace, a workspace that is not assigned to any Fabric capacity, or duplicate accessible workspace names stop plan generation with an explicit error. The storage workspace's capacity does not need to be the capacity governed by the Policy Set, so one capacity-backed governance workspace can store Policy Sets for several capacities. FPAC removes any existing plan file before discovery so a stale plan cannot remain after validation fails.
 
-Build an EPAC-style deployment plan:
+Build an FPAC deployment plan:
 
 ```powershell
 .\scripts\Deploy\Build-DeploymentPlans.ps1 -EnvironmentName FabricTestGSlack
@@ -323,4 +323,3 @@ See [the Fabric setup and manual policy guide](docs/fabric-setup-and-create-poli
 - [Manage policies in the OneLake catalog Policies center](https://learn.microsoft.com/fabric/governance/fabric-policies-manage-onelake-catalog)
 - [Fabric policies REST APIs](https://learn.microsoft.com/fabric/governance/fabric-policies-rest-api)
 - [PolicySet item definition](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/policyset-definition)
-- [EPAC operational scripts](https://github.com/Azure/enterprise-azure-policy-as-code/tree/main/Scripts/Operations)

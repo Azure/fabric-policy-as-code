@@ -110,7 +110,8 @@ function Invoke-FpacBuildDeploymentPlansOperation {
                 delete = $plan.policySets.delete.Count
             }
         Write-FpacPlanChangeDetails -ResourceType 'Policy Sets' `
-            -ResourcePlan $plan.policySets -DetailedOutput:$DetailedOutput -CapacityMap $capacityMap
+            -ResourcePlan $plan.policySets -DetailedOutput:$DetailedOutput -CapacityMap $capacityMap `
+            -WorkspaceMap $currentExport.WorkspaceMap
         $activationChanges = @($plan.activationChanges | Where-Object { [string] $_.action -ne 'Maintain' })
         if ($activationChanges.Count -gt 0) {
             Write-FpacModernSection -Title 'Activation Changes'

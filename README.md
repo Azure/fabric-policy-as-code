@@ -6,6 +6,10 @@ Fabric policies and their REST APIs are preview features. Export and deployment 
 
 For the staged repository setup, live validation plan, module packaging, documentation site, and CI/CD workflows, see the [FPAC implementation and validation roadmap](docs/implementation-and-validation-roadmap.md).
 
+For runnable setup instructions, expected results, and coverage of settings,
+definitions, reuse, fan-out, deployment, and safety boundaries, see the
+[manual test matrix](docs/manual-test-matrix.md).
+
 ## Why use FPAC
 
 The main benefit of managing Fabric policies as code is controlling, reviewing,
@@ -42,9 +46,24 @@ Install/update Az.Accounts if needed:
 Install-Module Az.Accounts -Scope CurrentUser
 ```
 
+## PowerShell module and automation
+
+FPAC can be built as the consumable `FabricPolicyAsCode` module. See
+[module installation and commands](docs/powershell-module.md) for local builds
+and version-pinned Gallery installation after the first release.
+
+The public commands are `Export-FpacPolicy`, `New-FpacPolicyPlan`, and
+`Invoke-FpacPolicyDeployment`. Existing source scripts remain supported.
+Reusable [planning and deployment actions](docs/github-actions.md) use GitHub
+OIDC with [separate Fabric identities](docs/deployment-identities.md).
+The [release workflow](docs/releases.md) publishes the package and then updates
+the [documentation site](https://azure.github.io/fabric-policy-as-code/) from
+the same release commit. Repository/Gallery/Pages setup is required before
+the first publication.
+
 ## Environments
 
-Define the FPAC environments in [global-settings.jsonc](Definitions/global-settings.jsonc). Every environment belongs to one tenant and is either:
+Define the FPAC environments in `Definitions/global-settings.jsonc` using the [configuration guide](docs/configuration.md). Every environment belongs to one tenant and is either:
 
 - **Tenant** — requires an explicit Boolean `includeCapacities` on its tenant scope entry. `false` manages only tenant-scoped Policy Sets; `true` manages tenant-scoped and all accessible capacity-scoped Policy Sets in one environment.
 - **Capacity** — export only Policy Sets assigned to one of the configured capacity IDs. This allows separate FPAC environments for teams that manage different capacity collections in the same tenant.
@@ -131,7 +150,16 @@ Output/<environment>/
   manifest.json         Export summary and failures
 ```
 
-The canonical JSON Schemas are maintained once under [`schemas/`](schemas/); exports reference those root files instead of copying a schema folder into every environment. Like EPAC artifacts, every policy definition, Policy Set definition, and deployment declaration has `$schema`, an FPAC-friendly `name`, and the natural Fabric content under `properties`. Owned Policy Set definitions also carry FPAC ownership in root `metadata`; individual policy definitions do not carry ownership. Fabric IDs, timestamps, and other incidental service metadata are not exported. Policy definitions and Policy Set definitions are reusable templates, not independent Fabric resources. Files under `policyAssignments/` retain the EPAC-inspired folder name but are FPAC fan-out declarations. Every target pairs the workspace where one concrete Policy Set item lives with the scope where it is active.
+Policy definitions, Policy Set definitions, and assignments are authored and
+exported as `.jsonc` files. Their readers support line/block comments and trailing
+commas, and continue to accept existing `.json` definitions. Rename existing
+authoring files in place when migrating; do not keep both extensions for the same
+definition, because duplicate identities are rejected. References use artifact
+names rather than filenames, so renaming does not change policy composition or
+assignment targets. Schemas, export manifests, deployment plans, and native
+Fabric payloads remain standard `.json`.
+
+The canonical JSON Schemas are maintained once under [`schemas/`](https://github.com/Azure/fabric-policy-as-code/tree/main/schemas); exports reference those root files instead of copying a schema folder into every environment. Like EPAC artifacts, every policy definition, Policy Set definition, and deployment declaration has `$schema`, an FPAC-friendly `name`, and the natural Fabric content under `properties`. Owned Policy Set definitions also carry FPAC ownership in root `metadata`; individual policy definitions do not carry ownership. Fabric IDs, timestamps, and other incidental service metadata are not exported. Policy definitions and Policy Set definitions are reusable templates, not independent Fabric resources. Files under `policyAssignments/` retain the EPAC-inspired folder name but are FPAC fan-out declarations. Every target pairs the workspace where one concrete Policy Set item lives with the scope where it is active.
 
 Export and desired state use the same three folder names; no folder renaming is
 needed when promoting an export. Older exports using `assignments/` and
@@ -172,6 +200,10 @@ activation summaries use resolved capacity names; raw IDs remain in the saved
 plan, and unresolved display names are explicitly marked as unavailable.
 Deletions show a single red `Delete: <workspace>/<policy set>` summary, even
 with `-DetailedOutput`; deleted contents remain in the saved plan, not the console.
+Workspace references in policy parameter and condition values also use resolved
+names in detailed console output, including new-policy content. Unresolved
+references retain their IDs. Saved plans and deployment payloads retain the
+original IDs; this name conversion is display-only.
 
 FPAC uses the same flat desired-state layout as EPAC:
 
@@ -206,7 +238,7 @@ Plan generation is read-only. It does not deploy any changes.
 
 ## Ownership and desired-state strategy
 
-FPAC uses `pacOwnerId` from [`global-settings.jsonc`](Definitions/global-settings.jsonc) as its Policy Set ownership boundary. When it writes a Policy Set, it appends a machine-readable marker to the Fabric description:
+FPAC uses `pacOwnerId` from [global settings](docs/configuration.md) as its Policy Set ownership boundary. When it writes a Policy Set, it appends a machine-readable marker to the Fabric description:
 
 ```text
 [[FPAC:v1;owner=contoso-fpac;id=stable-fpac-id]]
@@ -261,7 +293,11 @@ The deploy operation validates the plan schema, FPAC owner, desired-state strate
 
 Deployment output reports completed operations by workspace, Policy Set, and
 policy name: creation, rule updates/removals, renames, description changes, and
-owner assignment. Activation/deactivation messages identify the tenant or
+owner assignment. Updates and adoptions use a neutral `Policy Set:
+<workspace>/<name>` heading before indented policy and set-property operations.
+Policy-only updates do not add a separate "Updated" line for the containing set;
+the final update count still counts reconciled sets, including policy-only changes.
+Activation/deactivation messages identify the tenant or
 capacity name and report API acceptance, not immediate enforcement. The final
 summary lists only nonzero action counts. Declined actions are marked as
 skipped; `-WhatIf` uses "Would" messages and a preview heading that explicitly

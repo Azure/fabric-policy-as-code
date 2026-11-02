@@ -42,10 +42,10 @@ Describe 'Deployment operation details' {
     It 'reports completed rule updates and deletions by name' {
         Set-FabricPolicySetRules -PolicySet $script:set -WorkspaceId 'workspace-id' -PolicySetId 'set-id' -Headers @{}
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
-            $Message -eq 'Updated policy: Workspace/Set/Rule'
+            $Message -eq 'Updated policy: Rule' -and $Indent -eq 4
         }
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
-            $Message -eq 'Deleted policy: Workspace/Set/Obsolete' -and $Status -eq 'error'
+            $Message -eq 'Deleted policy: Obsolete' -and $Status -eq 'error' -and $Indent -eq 4
         }
     }
 
@@ -53,24 +53,28 @@ Describe 'Deployment operation details' {
         Mock Get-FabricPolicyRules { @() }
         Set-FabricPolicySetRules -PolicySet $script:set -WorkspaceId 'workspace-id' -PolicySetId 'set-id' -Headers @{}
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
-            $Message -eq 'Created policy: Workspace/Set/Rule' -and $Status -eq 'success'
+            $Message -eq 'Created policy: Rule' -and $Status -eq 'success' -and $Indent -eq 4
         }
         Should -Invoke Wait-FabricLongRunningOperation -Times 1 -Exactly
     }
 
     It 'reports set creation and included rules without claiming an activation for an inactive set' {
+        $script:creationMessages = [System.Collections.Generic.List[string]]::new()
+        Mock Write-FpacModernStatus { $script:creationMessages.Add($Message) }
         Mock Invoke-FabricApiRequest { [pscustomobject]@{ StatusCode = 201; Headers = @{}; Body = $null } }
         $id = New-FabricPolicySet -PolicySet $script:set -WorkspaceId 'workspace-id' -Headers @{}
         $id | Should -Be 'new-set-id'
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter { $Message -eq 'Created: Workspace/Set' }
-        Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter { $Message -eq 'Created policy: Workspace/Set/Rule' }
+        Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter { $Message -eq 'Created policy: Rule' -and $Indent -eq 4 }
         Should -Invoke Write-FpacModernStatus -Times 0 -ParameterFilter { $Message -like '*Activation accepted*' }
+        $script:creationMessages[0] | Should -Be 'Created: Workspace/Set'
+        $script:creationMessages[1] | Should -Be 'Created policy: Rule'
     }
 
     It 'reports ownership after a successful write' {
         Set-FabricPolicySetOwnership -PolicySet $script:set -ResolvedItem $script:resolved -Headers @{} -PacOwnerId 'owner'
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
-            $Message -eq 'Assigned owner: Workspace/Set -> owner'
+            $Message -eq 'Assigned owner: owner' -and $Indent -eq 4
         }
     }
 
@@ -87,10 +91,10 @@ Describe 'Deployment operation details' {
             -CapacityMap @{ OldCapacity = 'old-capacity'; NewCapacity = 'new-capacity' }
 
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
-            $Message -eq 'Renamed: Workspace/Old Set -> Set'
+            $Message -eq 'Renamed: Old Set -> Set' -and $Indent -eq 4
         }
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
-            $Message -eq 'Updated description: Workspace/Set'
+            $Message -eq 'Updated description' -and $Indent -eq 4
         }
         Should -Invoke Write-FpacModernStatus -Times 1 -Exactly -ParameterFilter {
             $Message -like 'Deactivation accepted: Workspace/Set on Capacity: OldCapacity*' -and $Status -eq 'error'
@@ -194,6 +198,50 @@ Describe 'Deployment result and preview output' {
         Should -Invoke Write-FpacModernStatus -Times 5 -Exactly -ParameterFilter { $Message -like 'Would *: Workspace/*' }
         Should -Invoke Write-FpacModernStatus -Times 0 -ParameterFilter {
             $Message -match '^(Created|Updated|Replaced|Adopted|Deleted):' -or $Message -like '*Activation*accepted*'
+        }
+    }
+
+    It 'places the <Operation> set heading before indented policy results without a trailing set-updated line' -ForEach @(
+        @{ Operation = 'update' }
+        @{ Operation = 'adopt' }
+    ) {
+        $plan = Get-Content -LiteralPath $script:planPath -Raw | ConvertFrom-Json -Depth 100
+        $entry = $plan.policySets.$Operation.$Operation
+        $entry.changes = if ($Operation -eq 'adopt') { @('ownership', 'policies') } else { @('policies') }
+        $bucket = New-FpacPlanBucket
+        $bucket.numberOfChanges = 1
+        $bucket[$Operation][$Operation] = $entry
+        $plan.policySets = $bucket
+        $plan.numberOfChanges = 1
+        Write-FpacJsonFile -Path $script:planPath -Value $plan
+        $script:messages = [System.Collections.Generic.List[object]]::new()
+        Mock Write-FpacModernStatus {
+            $script:messages.Add([pscustomobject]@{ Message = $Message; Indent = $Indent; Status = $Status })
+        }
+        Mock Update-FabricPolicySet {
+            Write-FpacModernStatus -Message 'Updated policy: Rule' -Status update -Indent 4
+        }
+        Mock Set-FabricPolicySetOwnership {
+            Write-FpacModernStatus -Message 'Assigned owner: owner' -Status success -Indent 4
+        }
+
+        $result = Invoke-FpacDeployPolicyOperation @script:arguments
+
+        $result.Skipped | Should -Be 0
+        $headingIndex = [Array]::IndexOf([object[]] $script:messages.Message, "Policy Set: Workspace/$Operation")
+        $policyIndex = [Array]::IndexOf([object[]] $script:messages.Message, 'Updated policy: Rule')
+        $headingIndex | Should -BeGreaterOrEqual 0
+        $policyIndex | Should -BeGreaterThan $headingIndex
+        $script:messages[$headingIndex].Indent | Should -Be 2
+        $script:messages[$headingIndex].Status | Should -Be 'info'
+        $script:messages[$policyIndex].Indent | Should -Be 4
+        if ($Operation -eq 'adopt') {
+            $ownerIndex = [Array]::IndexOf([object[]] $script:messages.Message, 'Assigned owner: owner')
+            $ownerIndex | Should -BeGreaterThan $headingIndex
+            $ownerIndex | Should -BeLessThan $policyIndex
+        }
+        Should -Invoke Write-FpacModernStatus -Times 0 -ParameterFilter {
+            $Message -like 'Updated: Workspace/*' -or $Message -like 'Adopted: Workspace/*'
         }
     }
 

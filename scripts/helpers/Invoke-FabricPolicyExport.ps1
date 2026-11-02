@@ -116,9 +116,9 @@ function Invoke-FabricPolicyExport {
 
                 Write-Host "$ActivityVerb Policy Set '$($item.displayName)' from workspace '$($workspace.displayName)'..."
                 $policySetName = ConvertTo-FpacIdentifier -DisplayName ([string] $item.displayName) -Id ([string] $item.id)
-                $policySetPath = Join-Path $policySetRoot "$policySetName.json"
+                $policySetPath = Join-Path $policySetRoot "$policySetName.jsonc"
                 $assignmentName = ConvertTo-FpacIdentifier -DisplayName "$($Target.Name)-$($item.displayName)" -Id ([string] $item.id)
-                $assignmentPath = Join-Path $assignmentRoot "$policySetName.json"
+                $assignmentPath = Join-Path $assignmentRoot "$policySetName.jsonc"
                 if ((Test-Path -LiteralPath $policySetPath) -or (Test-Path -LiteralPath $assignmentPath)) {
                     throw "An exported Policy Set or assignment already exists for item $($item.id)."
                 }
@@ -130,7 +130,7 @@ function Invoke-FabricPolicyExport {
                 foreach ($rule in $rules) {
                     $policyDefinition = ConvertTo-FpacPolicyDefinition -Rule $rule `
                         -SchemaReference $policyDefinitionSchemaReference
-                    $definitionPath = Join-Path $definitionRoot "$($policyDefinition.name).json"
+                    $definitionPath = Join-Path $definitionRoot "$($policyDefinition.name).jsonc"
                     if (Test-Path -LiteralPath $definitionPath) {
                         throw "An exported policy definition already exists: $($policyDefinition.name)."
                     }

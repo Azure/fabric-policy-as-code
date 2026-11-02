@@ -1,0 +1,56 @@
+name: Validate package and documentation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Az.Accounts -MinimumVersion 5.0.1 -Scope CurrentUser -Force
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+      - name: Build and import staged package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = .\Module\build.ps1
+          Import-Module (Join-Path $package 'FabricPolicyAsCode.psd1') -Force
+          $commands = @(Get-Command -Module FabricPolicyAsCode)
+          if ($commands.Count -ne 3) { throw 'Unexpected public module command surface.' }
+          Remove-Module FabricPolicyAsCode
+      - name: Validate module and action behavior
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -RequiredVersion 5.7.1
+          $result = Invoke-Pester -Path ./tests/Module.Tests.ps1,./tests/GitHubActions.Tests.ps1 -PassThru
+          if ($result.FailedCount -gt 0 -or $result.PassedCount -eq 0) {
+              throw 'Module/action validation failed.'
+          }
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-docs.txt
+      - name: Stage public documentation
+        shell: pwsh
+        run: ./scripts/Build-Documentation.ps1
+      - run: python -m mkdocs build --strict

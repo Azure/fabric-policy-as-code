@@ -48,10 +48,10 @@ function Update-FabricPolicySet {
             throw "Fabric Policy Set metadata update returned HTTP $($response.StatusCode)."
         }
         if ($changes -contains 'displayName') {
-            Write-FpacModernStatus -Message "Renamed: $($desired.properties.workspace)/$($PlanEntry.deployed.properties.displayName) -> $($desired.properties.displayName)" -Status update -Indent 4
+            Write-FpacModernStatus -Message "Renamed: $($PlanEntry.deployed.properties.displayName) -> $($desired.properties.displayName)" -Status update -Indent 4
         }
         if ($changes -contains 'description') {
-            Write-FpacModernStatus -Message "Updated description: $($desired.properties.workspace)/$($desired.properties.displayName)" -Status update -Indent 4
+            Write-FpacModernStatus -Message 'Updated description' -Status update -Indent 4
         }
     }
 

@@ -10,6 +10,9 @@ function Get-FabricAuthenticationHeaders {
 
     $context = Get-AzContext
     if (-not $context) {
+        if (Test-FpacCICDEnvironment) {
+            throw 'No Az.Accounts sign-in context exists in CI. Authenticate noninteractively before running FPAC.'
+        }
         if (-not (Get-Command Connect-AzAccount -ErrorAction SilentlyContinue)) {
             throw 'No Az.Accounts sign-in context exists and Connect-AzAccount is unavailable.'
         }

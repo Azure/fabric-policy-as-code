@@ -1,0 +1,73 @@
+name: FPAC plan and approved deployment
+
+# Copy into the consumer repository's .github/workflows directory.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fpac-production
+  cancel-in-progress: false
+
+env:
+  FPAC_MODULE_VERSION: '0.1.0'
+  FPAC_ENVIRONMENT: Production
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: FPAC-PLAN
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      has-changes: ${{ steps.plan.outputs.has-changes }}
+      plan-sha256: ${{ steps.plan.outputs.plan-sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: Azure/fabric-policy-as-code/actions/plan@v0.1.0
+        id: plan
+        with:
+          module-version: ${{ env.FPAC_MODULE_VERSION }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          environment-name: ${{ env.FPAC_ENVIRONMENT }}
+      - uses: actions/upload-artifact@v7
+        if: steps.plan.outputs.has-changes == 'true'
+        with:
+          name: reviewed-policy-plan
+          path: ${{ steps.plan.outputs.plan-file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    environment: FPAC-PRODUCTION-DEPLOY
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: reviewed-policy-plan
+          path: reviewed-plan
+      - uses: Azure/fabric-policy-as-code/actions/deploy@v0.1.0
+        with:
+          module-version: ${{ env.FPAC_MODULE_VERSION }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          environment-name: ${{ env.FPAC_ENVIRONMENT }}
+          plan-file: reviewed-plan/policy-plan.json
+          plan-sha256: ${{ needs.plan.outputs.plan-sha256 }}
